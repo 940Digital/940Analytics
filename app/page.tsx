@@ -29,7 +29,7 @@ export default function LandingPage() {
 
           <div className="mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center px-6 text-center">
             <h1 className="font-display text-4xl font-extrabold leading-tight text-white sm:text-5xl">
-              Website analytics for small businesses.
+              Website analytics for your business.
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-lg text-grey-light">
               See who's visiting your site. Bots filtered out automatically.
@@ -63,7 +63,7 @@ export default function LandingPage() {
         />
         <Feature
           title="Built for owners, not analysts"
-          body="Sessions, bounce, and where people came from — nothing you need a manual to read."
+          body="Sessions, bounce, and where people came from: nothing you need a manual to read."
         />
       </section>
 

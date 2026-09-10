@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
           name: businessName,
           domain,
         });
-        // 23505 = unique violation, meaning the site already got provisioned once — fine to ignore.
+        // 23505 = unique violation, meaning the site already got provisioned once (fine to ignore).
         if (!siteError || siteError.code === "23505") {
           return NextResponse.redirect(`${origin}/dashboard`);
         }
