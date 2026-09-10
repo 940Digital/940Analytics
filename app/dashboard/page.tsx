@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  searchParams: { error?: string; passwordUpdated?: string };
 }) {
   const supabase = createClient();
   const {
@@ -100,6 +100,11 @@ export default async function DashboardPage({
         {searchParams.error && (
           <p className="mb-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             {searchParams.error}
+          </p>
+        )}
+        {searchParams.passwordUpdated && (
+          <p className="mb-6 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+            Password updated.
           </p>
         )}
 

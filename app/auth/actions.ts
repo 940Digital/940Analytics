@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 // including Supabase's own per-address send cooldown - resubmitting signup
 // or hitting "resend" too soon returns a 429 with a wait time in the message,
 // which otherwise shows up as an unexplained silent failure to send.
-function friendlyAuthError(error: unknown, context: "signup" | "login" = "signup") {
+function friendlyAuthError(error: unknown, context: "signup" | "login" | "reset" = "signup") {
   if (!(error instanceof AuthError)) {
     // Not a Supabase auth error at all - a thrown network/fetch failure
     // (offline, DNS hiccup, Supabase itself down) rather than an API
@@ -67,6 +67,17 @@ function friendlyAuthError(error: unknown, context: "signup" | "login" = "signup
 
   if (code === "email_not_confirmed") {
     return "Please confirm your email first - check your inbox for the confirmation link.";
+  }
+
+  if (code === "same_password") {
+    return "That's your current password. Choose a different one.";
+  }
+
+  if (
+    context === "reset" &&
+    (code === "session_not_found" || code === "no_authorization" || /session/i.test(message))
+  ) {
+    return "That reset link has expired or was already used. Request a new one.";
   }
 
   if (error.status && error.status >= 500) {
@@ -202,6 +213,78 @@ export async function resendConfirmation(formData: FormData) {
   }
 
   redirect("/signup?checkEmail=1&resent=1");
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = String(formData.get("email") || "").trim();
+  if (!email) {
+    redirect("/forgot-password?error=" + encodeURIComponent("Enter your email address."));
+  }
+
+  const supabase = createClient();
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${getSiteUrl()}/auth/callback?type=recovery`,
+    });
+    // Supabase never reports "no account for that email" here - by design,
+    // so a reset request can't be used to check who's registered. Only
+    // surface the failures that aren't about whether the account exists:
+    // the send cooldown, and outright connection/server failures. Anything
+    // else (including a genuinely unknown email, which is silent success)
+    // shows the same generic message so nothing gets leaked either way.
+    if (error) {
+      const code = (error as { code?: string }).code;
+      const isRateLimit = code === "over_email_send_rate_limit" || error.status === 429;
+      const isServerOrNetwork = !(error instanceof AuthError) || (error.status ?? 0) >= 500;
+      if (isRateLimit || isServerOrNetwork) {
+        redirect("/forgot-password?error=" + encodeURIComponent(friendlyAuthError(error, "reset")));
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    redirect("/forgot-password?error=" + encodeURIComponent(friendlyAuthError(err, "reset")));
+  }
+
+  redirect("/forgot-password?sent=1");
+}
+
+export async function updatePassword(formData: FormData) {
+  const password = String(formData.get("password") || "");
+  const confirm = String(formData.get("confirm") || "");
+
+  if (password.length < 6) {
+    redirect("/auth/update-password?error=" + encodeURIComponent("Password needs to be at least 6 characters."));
+  }
+  if (password !== confirm) {
+    redirect("/auth/update-password?error=" + encodeURIComponent("Passwords don't match."));
+  }
+
+  const supabase = createClient();
+
+  // updateUser() needs the temporary recovery session the reset link sets up
+  // via /auth/callback. If that session is missing or has expired, there's
+  // nothing to update against - send them back to request a new link rather
+  // than showing a raw Supabase auth error.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect(
+      "/forgot-password?error=" + encodeURIComponent("That reset link has expired or was already used. Request a new one.")
+    );
+  }
+
+  try {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      redirect("/auth/update-password?error=" + encodeURIComponent(friendlyAuthError(error, "reset")));
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    redirect("/auth/update-password?error=" + encodeURIComponent(friendlyAuthError(err, "reset")));
+  }
+
+  redirect("/dashboard?passwordUpdated=1");
 }
 
 export async function logOut() {

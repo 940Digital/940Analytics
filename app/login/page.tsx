@@ -28,7 +28,12 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-charcoal-text">Password</span>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-sm font-medium text-charcoal-text">Password</span>
+              <Link href="/forgot-password" className="text-xs font-medium text-blue-accent hover:text-blue-hover">
+                Forgot password?
+              </Link>
+            </div>
             <input
               name="password"
               type="password"
