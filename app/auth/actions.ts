@@ -223,8 +223,13 @@ export async function requestPasswordReset(formData: FormData) {
 
   const supabase = createClient();
   try {
+    // Must be the exact same redirectTo as signUp() - anything not byte-for-
+    // byte in the Supabase project's Redirect URLs allowlist (which only has
+    // the bare /auth/callback, no query string) silently falls back to the
+    // shared project's Site URL. The callback route tells recovery apart
+    // from signup by decoding the session JWT instead of a query param.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${getSiteUrl()}/auth/callback?type=recovery`,
+      redirectTo: `${getSiteUrl()}/auth/callback`,
     });
     // Supabase never reports "no account for that email" here - by design,
     // so a reset request can't be used to check who's registered. Only
