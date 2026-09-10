@@ -1,53 +1,63 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { ConstellationHero } from "@/components/ConstellationHero";
 
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-sand">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Logo dark size={24} />
-        <nav className="flex items-center gap-3">
-          <Link
-            href="/login"
-            className="px-4 py-2 text-sm font-medium text-charcoal-text hover:text-blue-accent"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/signup"
-            className="rounded-md bg-charcoal-dark px-4 py-2 text-sm font-medium text-white hover:bg-charcoal-mid"
-          >
-            Get started free
-          </Link>
-        </nav>
-      </header>
+      <section className="relative min-h-[640px] h-[92vh] w-full overflow-hidden bg-charcoal-dark">
+        <ConstellationHero />
 
-      <section className="mx-auto max-w-3xl px-6 pb-20 pt-16 text-center">
-        <h1 className="font-display text-4xl font-extrabold leading-tight text-charcoal-text sm:text-5xl">
-          Know who's actually visiting your site.
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-lg text-grey-muted">
-          One line of code. Real visitor sessions, filtered clean of bots and
-          scrapers, in a dashboard built for people who don't have time to
-          learn analytics software.
-        </p>
-        <div className="mt-8 flex items-center justify-center gap-4">
-          <Link
-            href="/signup"
-            className="rounded-md bg-blue-accent px-6 py-3 text-sm font-semibold text-white hover:bg-blue-hover"
-          >
-            Create your free account
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-md border border-charcoal-text/15 px-6 py-3 text-sm font-semibold text-charcoal-text hover:border-blue-accent hover:text-blue-accent"
-          >
-            I already have one
-          </Link>
+        <div className="hero-fade-in relative z-10 flex h-full flex-col">
+          <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-6 sm:px-6">
+            <Logo size={20} />
+            <nav className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+              <Link
+                href="/login"
+                className="whitespace-nowrap px-1.5 py-2 text-xs font-medium text-grey-light hover:text-blue-accent sm:px-4 sm:text-sm"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="whitespace-nowrap rounded-md bg-blue-accent px-2.5 py-2 text-xs font-medium text-white hover:bg-blue-hover sm:px-4 sm:text-sm"
+              >
+                Get started free
+              </Link>
+            </nav>
+          </header>
+
+          <div className="mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center px-6 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-accent">
+              Visitors, mapped
+            </p>
+            <h1 className="mt-4 font-display text-4xl font-extrabold leading-tight text-white sm:text-6xl">
+              Know who's actually visiting your site.
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-lg text-grey-light">
+              One line of code. Real visitor sessions, filtered clean of bots
+              and scrapers, in a dashboard built for people who don't have
+              time to learn analytics software.
+            </p>
+            <div className="mt-8 flex items-center justify-center gap-4">
+              <Link
+                href="/signup"
+                className="rounded-md bg-blue-accent px-6 py-3 text-sm font-semibold text-white hover:bg-blue-hover"
+              >
+                Create your free account
+              </Link>
+              <Link
+                href="/login"
+                className="rounded-md border border-white/20 px-6 py-3 text-sm font-semibold text-white hover:border-blue-accent hover:text-blue-accent"
+              >
+                I already have one
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-5xl gap-6 px-6 pb-24 sm:grid-cols-3">
+      <section className="mx-auto grid max-w-5xl gap-6 px-6 py-20 sm:grid-cols-3">
         <Feature
           title="2-minute setup"
           body="Sign up, paste one snippet before </body>, done. No config, no tagging plan."
