@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Session = {
@@ -86,11 +86,23 @@ function fmtTime(iso: string) {
   });
 }
 
-export function SessionChart({ siteId }: { siteId: string }) {
+export function SessionChart({
+  siteId,
+  initialSessions,
+}: {
+  siteId: string;
+  // Server-fetched data for the default (30-day) range, rendered on first
+  // paint - without this the chart always opened on a loading spinner, then
+  // popped in a beat later once the client-side fetch came back. Only ever
+  // used for that first render; every range change (including switching
+  // back to 30 days) refetches normally.
+  initialSessions?: Session[];
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [rangeKey, setRangeKey] = useState(RANGES[1].key); // default 30 days
-  const [sessions, setSessions] = useState<Session[] | null>(null);
+  const [sessions, setSessions] = useState<Session[] | null>(initialSessions ?? null);
   const [selected, setSelected] = useState<string | null>(null);
+  const skipNextFetch = useRef(Boolean(initialSessions));
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[1];
 
@@ -101,6 +113,10 @@ export function SessionChart({ siteId }: { siteId: string }) {
   // came back truncated - ascending-sorted, so it was always the OLDEST
   // rows that survived and the newest ones that silently vanished.
   useEffect(() => {
+    if (skipNextFetch.current) {
+      skipNextFetch.current = false;
+      return;
+    }
     let cancelled = false;
     setSessions(null);
     const since = new Date();

@@ -29,6 +29,10 @@ export default async function DashboardPage({
   const site = sites?.[0] ?? null;
 
   let sessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
+  // Matches SessionChart's own default range (30 days, day buckets) exactly,
+  // so its first client render can reuse this instead of opening on a
+  // spinner and refetching data the page already has.
+  let chartInitialSessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
 
   if (site) {
     const { data } = await supabase
@@ -38,6 +42,24 @@ export default async function DashboardPage({
       .order("session_start", { ascending: false })
       .limit(25);
     sessions = data ?? [];
+
+    const chartSince = new Date();
+    chartSince.setDate(chartSince.getDate() - 29);
+    chartSince.setHours(0, 0, 0, 0);
+    const chartAll: typeof chartInitialSessions = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data: page, error } = await supabase
+        .from("sessions")
+        .select("id, session_start, is_bot, is_bounce, referrer")
+        .eq("site_id", site.id)
+        .gte("session_start", chartSince.toISOString())
+        .order("session_start", { ascending: true })
+        .range(offset, offset + 999);
+      if (error || !page) break;
+      chartAll.push(...page);
+      if (page.length < 1000) break;
+    }
+    chartInitialSessions = chartAll;
   }
 
   let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
@@ -118,7 +140,7 @@ export default async function DashboardPage({
             </section>
 
             <section className="mt-6">
-              <SessionChart siteId={site.id} />
+              <SessionChart siteId={site.id} initialSessions={chartInitialSessions} />
             </section>
 
             <section className="mt-10">
