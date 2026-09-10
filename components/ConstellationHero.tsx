@@ -46,11 +46,11 @@ export function ConstellationHero() {
       return new THREE.LineSegments(edges, material);
     }
 
-    const icosa = wireSolid(new THREE.IcosahedronGeometry(3.1, 0), BLUE, 0.55);
-    const octa = wireSolid(new THREE.OctahedronGeometry(2.1, 0), GREY, 0.4);
-    const tetra = wireSolid(new THREE.TetrahedronGeometry(1.3, 0), WHITE, 0.6);
+    const icosa = wireSolid(new THREE.IcosahedronGeometry(3.1, 0), BLUE, 0.32);
+    const octa = wireSolid(new THREE.OctahedronGeometry(2.1, 0), GREY, 0.22);
+    const tetra = wireSolid(new THREE.TetrahedronGeometry(1.3, 0), WHITE, 0.35);
     core.add(icosa, octa, tetra);
-    core.scale.setScalar(2);
+    core.scale.setScalar(1.8);
 
     // ---- Animation state ----
     let rafId: number | null = null;
