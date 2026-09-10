@@ -5,7 +5,7 @@ import { ConstellationHero } from "@/components/ConstellationHero";
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-sand">
-      <section className="relative min-h-[640px] h-[92vh] w-full overflow-hidden bg-charcoal-dark">
+      <section className="relative min-h-[480px] h-[68vh] w-full overflow-hidden bg-charcoal-dark">
         <ConstellationHero />
 
         <div className="hero-fade-in relative z-10 flex h-full flex-col">
@@ -28,16 +28,11 @@ export default function LandingPage() {
           </header>
 
           <div className="mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center px-6 text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-accent">
-              Visitors, mapped
-            </p>
-            <h1 className="mt-4 font-display text-4xl font-extrabold leading-tight text-white sm:text-6xl">
-              Know who's actually visiting your site.
+            <h1 className="font-display text-4xl font-extrabold leading-tight text-white sm:text-5xl">
+              Website analytics for small businesses.
             </h1>
-            <p className="mx-auto mt-5 max-w-xl text-lg text-grey-light">
-              One line of code. Real visitor sessions, filtered clean of bots
-              and scrapers, in a dashboard built for people who don't have
-              time to learn analytics software.
+            <p className="mx-auto mt-4 max-w-xl text-lg text-grey-light">
+              See who's visiting your site. Bots filtered out automatically.
             </p>
             <div className="mt-8 flex items-center justify-center gap-4">
               <Link
