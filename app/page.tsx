@@ -5,7 +5,7 @@ import { ConstellationHero } from "@/components/ConstellationHero";
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-sand">
-      <section className="relative min-h-[480px] h-[68vh] w-full overflow-hidden bg-charcoal-dark">
+      <section className="relative min-h-[560px] h-[80vh] w-full overflow-hidden bg-charcoal-dark">
         <ConstellationHero />
 
         <div className="hero-fade-in relative z-10 flex h-full flex-col">
