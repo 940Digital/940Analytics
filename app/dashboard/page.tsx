@@ -4,6 +4,7 @@ import { Logo } from "@/components/Logo";
 import { logOut, createSite } from "@/app/auth/actions";
 import { SnippetBox } from "@/components/SnippetBox";
 import { StatTile } from "@/components/StatTile";
+import { ProjectProgress } from "@/components/ProjectProgress";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,34 @@ export default async function DashboardPage({
 
   const humanSessions = totalSessions - botSessions;
 
+  let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
+
+  if (site) {
+    const { data: website } = await supabase
+      .from("crm_websites")
+      .select("id")
+      .eq("site_id", site.id)
+      .maybeSingle();
+
+    if (website) {
+      const { data: project } = await supabase
+        .from("crm_projects")
+        .select("id")
+        .eq("website_id", website.id)
+        .eq("is_cancelled", false)
+        .maybeSingle();
+
+      if (project) {
+        const { data: steps } = await supabase
+          .from("crm_project_steps")
+          .select("id, title, status, completed_at")
+          .eq("project_id", project.id)
+          .order("position", { ascending: true });
+        projectSteps = steps ?? [];
+      }
+    }
+  }
+
   return (
     <main className="min-h-screen bg-sand">
       <header className="border-b border-charcoal-text/10 bg-white/60">
@@ -86,6 +115,8 @@ export default async function DashboardPage({
                 <p className="text-sm text-grey-muted">{site.domain}</p>
               </div>
             </div>
+
+            <ProjectProgress steps={projectSteps} />
 
             <div className="grid gap-4 sm:grid-cols-3">
               <StatTile label="Total sessions" value={totalSessions} />
