@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { logOut, createSite } from "@/app/auth/actions";
 import { SnippetBox } from "@/components/SnippetBox";
-import { StatTile } from "@/components/StatTile";
 import { ProjectProgress } from "@/components/ProjectProgress";
+import { SessionChart } from "@/components/SessionChart";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,6 @@ export default async function DashboardPage({
   const site = sites?.[0] ?? null;
 
   let sessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
-  let totalSessions = 0;
-  let botSessions = 0;
 
   if (site) {
     const { data } = await supabase
@@ -40,22 +38,7 @@ export default async function DashboardPage({
       .order("session_start", { ascending: false })
       .limit(25);
     sessions = data ?? [];
-
-    const { count: total } = await supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("site_id", site.id);
-    const { count: bots } = await supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("site_id", site.id)
-      .eq("is_bot", true);
-
-    totalSessions = total ?? 0;
-    botSessions = bots ?? 0;
   }
-
-  const humanSessions = totalSessions - botSessions;
 
   let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
 
@@ -123,11 +106,20 @@ export default async function DashboardPage({
 
             <ProjectProgress steps={projectSteps} />
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <StatTile label="Total sessions" value={totalSessions} />
-              <StatTile label="Real visitors" value={humanSessions} tone="good" />
-              <StatTile label="Bots blocked" value={botSessions} tone="muted" />
-            </div>
+            <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
+              <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                Your tracking snippet
+              </h2>
+              <p className="mt-2 text-sm text-grey-muted">
+                Paste this right before the closing <code>&lt;/body&gt;</code> tag on every page
+                you want tracked.
+              </p>
+              <SnippetBox siteId={site.id} />
+            </section>
+
+            <section className="mt-6">
+              <SessionChart siteId={site.id} />
+            </section>
 
             <section className="mt-10">
               <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
@@ -179,17 +171,6 @@ export default async function DashboardPage({
                   </table>
                 )}
               </div>
-            </section>
-
-            <section className="mt-10">
-              <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                Your tracking snippet
-              </h2>
-              <p className="mt-2 text-sm text-grey-muted">
-                Paste this right before the closing <code>&lt;/body&gt;</code> tag on every page
-                you want tracked.
-              </p>
-              <SnippetBox siteId={site.id} />
             </section>
           </>
         )}
