@@ -50,6 +50,7 @@ export function ConstellationHero() {
     const octa = wireSolid(new THREE.OctahedronGeometry(2.1, 0), GREY, 0.4);
     const tetra = wireSolid(new THREE.TetrahedronGeometry(1.3, 0), WHITE, 0.6);
     core.add(icosa, octa, tetra);
+    core.scale.setScalar(2);
 
     // ---- Animation state ----
     let rafId: number | null = null;
