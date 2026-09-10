@@ -130,47 +130,6 @@ export function ConstellationHero() {
     const lines = new THREE.LineSegments(lineGeo, lineMat);
     core.add(lines);
 
-    // ---- Starfield: a wide sky of far points, bursting outward from the
-    //      center on load, then drifting in a slow, endless rotation ----
-    const STAR_COUNT = 650;
-    const starTargets: number[] = [];
-    const starColors: number[] = [];
-    const colorBlue = new THREE.Color(BLUE);
-    const colorGrey = new THREE.Color(GREY);
-    for (let i = 0; i < STAR_COUNT; i++) {
-      const r = 7 + Math.random() * 15;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      starTargets.push(
-        r * Math.sin(phi) * Math.cos(theta),
-        r * Math.sin(phi) * Math.sin(theta),
-        r * Math.cos(phi)
-      );
-      const c = Math.random() > 0.75 ? colorBlue : colorGrey;
-      starColors.push(c.r, c.g, c.b);
-    }
-    const starGeo = new THREE.BufferGeometry();
-    const starStart = prefersReducedMotion
-      ? starTargets
-      : starTargets.map(() => 0); // everything begins collapsed at the core
-    starGeo.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(starStart, 3)
-    );
-    starGeo.setAttribute("color", new THREE.Float32BufferAttribute(starColors, 3));
-    const starMat = new THREE.PointsMaterial({
-      size: 0.11,
-      map: discTex,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.9,
-      sizeAttenuation: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const stars = new THREE.Points(starGeo, starMat);
-    scene.add(stars);
-
     // ---- Animation state ----
     let rafId: number | null = null;
     let running = false;
@@ -178,28 +137,10 @@ export function ConstellationHero() {
     const pointer = { x: 0, y: 0 };
     const pointerEased = { x: 0, y: 0 };
 
-    function easeOutCubic(t: number) {
-      return 1 - Math.pow(1 - t, 3);
-    }
-
     function render(elapsed: number) {
       const t = elapsed / 1000;
 
-      // Burst: interpolate star positions from center out to their targets
       if (!prefersReducedMotion) {
-        const burstT = Math.min(1, t / 2.6);
-        const eased = easeOutCubic(burstT);
-        const posAttr = starGeo.attributes.position as THREE.BufferAttribute;
-        for (let i = 0; i < STAR_COUNT; i++) {
-          posAttr.setXYZ(
-            i,
-            starTargets[i * 3] * eased,
-            starTargets[i * 3 + 1] * eased,
-            starTargets[i * 3 + 2] * eased
-          );
-        }
-        posAttr.needsUpdate = true;
-
         core.rotation.y = t * 0.06;
         icosa.rotation.x = t * 0.05;
         icosa.rotation.y = t * 0.09;
@@ -207,7 +148,6 @@ export function ConstellationHero() {
         octa.rotation.y = t * 0.04;
         tetra.rotation.x = t * 0.14;
         tetra.rotation.y = -t * 0.11;
-        stars.rotation.y = t * 0.015;
 
         pointerEased.x += (pointer.x - pointerEased.x) * 0.03;
         pointerEased.y += (pointer.y - pointerEased.y) * 0.03;
@@ -280,8 +220,6 @@ export function ConstellationHero() {
       nodeMat.dispose();
       lineGeo.dispose();
       lineMat.dispose();
-      starGeo.dispose();
-      starMat.dispose();
       icosa.geometry.dispose();
       octa.geometry.dispose();
       tetra.geometry.dispose();
