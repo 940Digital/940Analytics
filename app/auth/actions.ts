@@ -193,6 +193,12 @@ export async function resendConfirmation(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
   if (!email) redirect("/signup?checkEmail=1");
 
+  // Every redirect out of here must keep &email= on the URL - drop it and
+  // the resend button (which only renders when searchParams.email is set)
+  // disappears the moment any message shows, cooldown included, leaving no
+  // way to try again once the wait is over except starting signup over.
+  const emailParam = "&email=" + encodeURIComponent(email);
+
   const supabase = createClient();
   try {
     const { error } = await supabase.auth.resend({
@@ -202,17 +208,17 @@ export async function resendConfirmation(formData: FormData) {
     });
     if (error) {
       redirect(
-        "/signup?checkEmail=1&resendError=" + encodeURIComponent(friendlyAuthError(error, "signup"))
+        "/signup?checkEmail=1" + emailParam + "&resendError=" + encodeURIComponent(friendlyAuthError(error, "signup"))
       );
     }
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     redirect(
-      "/signup?checkEmail=1&resendError=" + encodeURIComponent(friendlyAuthError(err, "signup"))
+      "/signup?checkEmail=1" + emailParam + "&resendError=" + encodeURIComponent(friendlyAuthError(err, "signup"))
     );
   }
 
-  redirect("/signup?checkEmail=1&resent=1");
+  redirect("/signup?checkEmail=1" + emailParam + "&resent=1");
 }
 
 export async function requestPasswordReset(formData: FormData) {
