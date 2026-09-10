@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 function cleanDomain(input: string) {
@@ -10,6 +11,23 @@ function cleanDomain(input: string) {
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .replace(/\/.*$/, "");
+}
+
+// Supabase's confirmation email links to the project's Auth "Site URL" by
+// default, which is shared with 940digital.com's own Supabase Auth usage
+// and points there - not here. Passing emailRedirectTo explicitly is the
+// fix; it still has to be added to the project's Auth > URL Configuration
+// > Redirect URLs allowlist or Supabase silently falls back to Site URL
+// again (that allowlist isn't reachable through any available API/DB
+// tool, so this needs to be added by hand once, in the Supabase dashboard).
+function getSiteUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  const h = headers();
+  const origin = h.get("origin");
+  if (origin) return origin;
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") || "https";
+  return host ? `${proto}://${host}` : "http://localhost:3300";
 }
 
 export async function signUp(formData: FormData) {
@@ -27,7 +45,10 @@ export async function signUp(formData: FormData) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { display_name: businessName, pending_domain: domain } },
+    options: {
+      data: { display_name: businessName, pending_domain: domain },
+      emailRedirectTo: `${getSiteUrl()}/auth/callback`,
+    },
   });
 
   if (error) {
