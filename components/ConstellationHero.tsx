@@ -11,27 +11,6 @@ const WHITE = 0xffffff;
 const CHARCOAL = 0x1b1d21;
 const CHARCOAL_MID = 0x1e2125;
 
-/** A soft circular sprite (canvas-drawn radial gradient) so points render as
- *  round glints instead of the default square GL points. */
-function makeDiscTexture() {
-  const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const gradient = ctx.createRadialGradient(
-    size / 2, size / 2, 0,
-    size / 2, size / 2, size / 2
-  );
-  gradient.addColorStop(0, "rgba(255,255,255,1)");
-  gradient.addColorStop(0.4, "rgba(255,255,255,0.7)");
-  gradient.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.needsUpdate = true;
-  return tex;
-}
-
 /** One flat-shaded, outlined low-poly shape — the toy-block look Monument
  *  Valley builds its whole world from: solid matte faces plus a crisp dark
  *  edge line, no smoothing, no texture. */
@@ -143,37 +122,8 @@ export function ConstellationHero() {
         group: block(new THREE.BoxGeometry(0.75, 0.75, 0.75), GREY),
         radius: 3.3, speed: 0.24, phase: 4.2, tiltX: 0.12, tiltZ: -0.3, spinX: 0.4, spinY: -0.55,
       },
-      {
-        group: block(new THREE.ConeGeometry(0.5, 0.9, 4), BLUE_DEEP),
-        radius: 6.6, speed: -0.09, phase: 1.2, tiltX: 0.28, tiltZ: 0.15, spinX: 0.3, spinY: 0.25,
-      },
     ];
     satellites.forEach((s) => world.add(s.group));
-
-    // ---- A light dusting of soft, circular ambient glints (not a dense
-    //      starfield) so the diorama sits in some depth, not a void. ----
-    const discTex = makeDiscTexture();
-    const DUST_COUNT = 140;
-    const dustPositions: number[] = [];
-    for (let i = 0; i < DUST_COUNT; i++) {
-      const r = 6 + Math.random() * 12;
-      const theta = Math.random() * Math.PI * 2;
-      const y = (Math.random() - 0.5) * 8;
-      dustPositions.push(r * Math.cos(theta), y, r * Math.sin(theta));
-    }
-    const dustGeo = new THREE.BufferGeometry();
-    dustGeo.setAttribute("position", new THREE.Float32BufferAttribute(dustPositions, 3));
-    const dustMat = new THREE.PointsMaterial({
-      color: GREY,
-      size: 0.16,
-      map: discTex,
-      transparent: true,
-      opacity: 0.55,
-      sizeAttenuation: true,
-      depthWrite: false,
-    });
-    const dust = new THREE.Points(dustGeo, dustMat);
-    scene.add(dust);
 
     // ---- Animation ----
     let rafId: number | null = null;
@@ -201,7 +151,6 @@ export function ConstellationHero() {
 
       ring.rotation.z = t * 0.05;
       world.rotation.y = t * 0.02;
-      dust.rotation.y = t * 0.01;
     }
 
     function render(elapsed: number) {
@@ -275,9 +224,6 @@ export function ConstellationHero() {
       document.removeEventListener("visibilitychange", onVisibility);
       io?.disconnect();
       mount.removeChild(renderer.domElement);
-      discTex.dispose();
-      dustGeo.dispose();
-      dustMat.dispose();
       ring.geometry.dispose();
       (ring.material as THREE.Material).dispose();
       [core, ...satellites.map((s) => s.group)].forEach((g) => {
