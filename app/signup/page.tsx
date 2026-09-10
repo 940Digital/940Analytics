@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { signUp } from "@/app/auth/actions";
+import { signUp, resendConfirmation } from "@/app/auth/actions";
 
 export default function SignupPage({
   searchParams,
 }: {
-  searchParams: { error?: string; checkEmail?: string };
+  searchParams: { error?: string; checkEmail?: string; email?: string; resendError?: string; resent?: string };
 }) {
   if (searchParams.checkEmail) {
     return (
@@ -21,6 +21,29 @@ export default function SignupPage({
             We sent you a confirmation link. Click it and you'll land straight
             in your dashboard with your tracking snippet ready to go.
           </p>
+
+          {searchParams.resent && (
+            <p className="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+              Sent again — check your inbox (and spam folder).
+            </p>
+          )}
+          {searchParams.resendError && (
+            <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {searchParams.resendError}
+            </p>
+          )}
+
+          {searchParams.email && (
+            <form action={resendConfirmation} className="mt-5">
+              <input type="hidden" name="email" value={searchParams.email} />
+              <button
+                type="submit"
+                className="text-sm font-medium text-blue-accent hover:text-blue-hover"
+              >
+                Didn't get it? Resend the email
+              </button>
+            </form>
+          )}
         </div>
       </main>
     );
