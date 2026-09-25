@@ -171,22 +171,32 @@ export async function signUp(formData: FormData) {
   redirect("/dashboard");
 }
 
+// Only ever follow a path on this site. An open redirect here would turn a
+// review invite link into a way to bounce someone somewhere else entirely.
+function safeNext(raw: unknown): string | null {
+  const next = String(raw || "");
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
+}
+
 export async function logIn(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
+  const next = safeNext(formData.get("next"));
+  const carry = next ? "&next=" + encodeURIComponent(next) : "";
 
   const supabase = createClient();
   try {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      redirect("/login?error=" + encodeURIComponent(friendlyAuthError(error, "login")));
+      redirect("/login?error=" + encodeURIComponent(friendlyAuthError(error, "login")) + carry);
     }
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-    redirect("/login?error=" + encodeURIComponent(friendlyAuthError(err, "login")));
+    redirect("/login?error=" + encodeURIComponent(friendlyAuthError(err, "login")) + carry);
   }
 
-  redirect("/dashboard");
+  redirect(next || "/dashboard");
 }
 
 export async function resendConfirmation(formData: FormData) {

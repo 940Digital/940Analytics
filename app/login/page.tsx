@@ -2,7 +2,17 @@ import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { logIn } from "@/app/auth/actions";
 
-export default function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: { error?: string; next?: string };
+}) {
+  // Carried through the form so an invite link lands on the review it named
+  // rather than dumping the reviewer on a dashboard they did not ask for.
+  const next =
+    searchParams.next && searchParams.next.startsWith("/") && !searchParams.next.startsWith("//")
+      ? searchParams.next
+      : null;
   return (
     <main className="flex min-h-screen items-center justify-center bg-sand px-6 py-12">
       <div className="w-full max-w-sm">
@@ -18,6 +28,7 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
         )}
 
         <form action={logIn} className="mt-6 space-y-4">
+          {next ? <input type="hidden" name="next" value={next} /> : null}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-charcoal-text">Email</span>
             <input

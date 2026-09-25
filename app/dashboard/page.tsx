@@ -28,6 +28,14 @@ export default async function DashboardPage({
 
   const site = sites?.[0] ?? null;
 
+  // Row level security already limits this to reviews the viewer was granted,
+  // so there is no account_id filter to write here. A client sees theirs; the
+  // master account sees every one.
+  const { data: reviews } = await supabase
+    .from("rv_reviews")
+    .select("id, title, status, created_at")
+    .order("created_at", { ascending: false });
+
   let sessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
   // Matches SessionChart's own default range (30 days, day buckets) exactly,
   // so its first client render can reuse this instead of opening on a
@@ -112,6 +120,32 @@ export default async function DashboardPage({
             Password updated.
           </p>
         )}
+
+        {reviews && reviews.length > 0 ? (
+          <section className="mb-8 rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
+            <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+              Your website
+            </h2>
+            <p className="mt-2 text-sm text-grey-muted">
+              Read the pages as they stand and mark up anything you want changed.
+              Click any words to leave a note or rewrite them.
+            </p>
+            <div className="mt-4 space-y-2">
+              {reviews.map((r) => (
+                <a
+                  key={r.id}
+                  href={`/review/${r.id}`}
+                  className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
+                >
+                  <span className="truncate">
+                    {reviews.length === 1 ? "View my website" : r.title}
+                  </span>
+                  <span aria-hidden className="shrink-0">&rarr;</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {!site ? (
           <OnboardingCard />
