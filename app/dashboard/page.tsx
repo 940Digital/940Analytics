@@ -196,18 +196,34 @@ export default async function DashboardPage({
                       </p>
                       <div className="mt-4 space-y-2">
                         {reviews!.map((r) => (
-                          <a
-                            key={r.id}
-                            href={`/review/${r.id}`}
-                            className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
-                          >
-                            <span className="truncate">
-                              {reviews!.length === 1 ? "View my website" : r.title}
-                            </span>
-                            <span aria-hidden className="shrink-0">&rarr;</span>
-                          </a>
+                          <div key={r.id}>
+                            {/* Live on a big screen, greyed out with a reason on a
+                                small one. Better to say why now than to let
+                                someone open it and find it unusable. */}
+                            <a
+                              href={`/review/${r.id}`}
+                              className="hidden items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover lg:flex"
+                            >
+                              <span className="truncate">
+                                {reviews!.length === 1 ? "View my website" : r.title}
+                              </span>
+                              <span aria-hidden className="shrink-0">&rarr;</span>
+                            </a>
+                            <div
+                              aria-disabled="true"
+                              className="flex cursor-not-allowed items-center justify-between gap-3 rounded-md bg-charcoal-text/15 px-4 py-2.5 text-sm font-semibold text-grey-muted lg:hidden"
+                            >
+                              <span className="truncate">
+                                {reviews!.length === 1 ? "View my website" : r.title}
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
+                      <p className="mt-2 text-xs text-grey-muted lg:hidden">
+                        Marking up your site needs a bigger screen. Open this on a
+                        computer and it will be ready.
+                      </p>
                     </section>
                   ) : null}
 

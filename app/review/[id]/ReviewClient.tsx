@@ -76,6 +76,7 @@ export function ReviewClient({
   const [pending, startTransition] = useTransition();
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [mode, setMode] = useState<"notes" | "browse">("notes");
 
   const pageThreads = useMemo(
     () => threads.filter((t) => t.page_id === activePageId),
@@ -89,6 +90,16 @@ export function ReviewClient({
     pageThreads.forEach((t, i) => m.set(t.id, i + 1));
     return m;
   }, [pageThreads]);
+
+  const sendMode = useCallback(
+    (next: "notes" | "browse") => {
+      frame.current?.contentWindow?.postMessage(
+        { type: "rv:mode", mode: next },
+        window.location.origin
+      );
+    },
+    []
+  );
 
   const sendMarks = useCallback(() => {
     frame.current?.contentWindow?.postMessage(
@@ -110,7 +121,10 @@ export function ReviewClient({
       if (e.origin !== window.location.origin || !e.data) return;
       const d = e.data as Record<string, string>;
 
-      if (d.type === "rv:ready") sendMarks();
+      if (d.type === "rv:ready") {
+        sendMarks();
+        sendMode(mode);
+      }
 
       if (d.type === "rv:select") {
         setSelection({ anchor: d.anchor, label: d.label, text: d.text, tag: d.tag });
@@ -137,11 +151,23 @@ export function ReviewClient({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [pages, reviewId, router, sendMarks]);
+  }, [pages, reviewId, router, sendMarks, sendMode, mode]);
+
+  useEffect(() => {
+    sendMode(mode);
+  }, [mode, sendMode]);
 
   useEffect(() => {
     sendMarks();
   }, [sendMarks]);
+
+  function startGeneralNote() {
+    setSelection({ anchor: "page", label: "About this page", text: "", tag: "page" });
+    setSuggestText("");
+    setNoteText("");
+    setError(null);
+    setOpenThread(null);
+  }
 
   function submitThread() {
     if (!selection) return;
@@ -196,7 +222,26 @@ export function ReviewClient({
   const accepted = threads.filter((t) => t.status === "accepted" && t.suggested_text);
 
   return (
-    <div className="flex h-screen flex-col bg-charcoal-dark font-body text-sand">
+    <>
+      {/* Marking up a website means seeing it at the width it was designed for,
+          side by side with the notes. On a phone that is neither. Rather than
+          shipping a cramped version nobody would enjoy, say so plainly. */}
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-charcoal-dark px-8 text-center font-body text-sand lg:hidden">
+        <Logo />
+        <h1 className="mt-4 font-display text-xl font-bold">Open this on a computer</h1>
+        <p className="max-w-xs text-sm leading-relaxed text-grey-light">
+          Reviewing your site means seeing it full size next to your notes, which
+          needs a bigger screen than this one. The link will be waiting.
+        </p>
+        <Link
+          href="/dashboard"
+          className="mt-2 rounded-md border border-white/20 px-4 py-2 text-sm text-sand"
+        >
+          Back to my dashboard
+        </Link>
+      </div>
+
+    <div className="hidden h-screen flex-col bg-charcoal-dark font-body text-sand lg:flex">
       {/* ---- header -------------------------------------------------- */}
       <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 border-b border-white/10 px-5 py-3">
         <Link href="/dashboard" className="shrink-0">
@@ -206,6 +251,23 @@ export function ReviewClient({
           <h1 className="truncate font-display text-sm font-semibold">{title}</h1>
           {note ? <p className="truncate text-xs text-grey-muted">{note}</p> : null}
         </div>
+        <div className="flex shrink-0 items-center rounded-md bg-white/10 p-0.5">
+          {([
+            ["notes", "Leave notes"],
+            ["browse", "Look around"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setMode(value)}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+                mode === value ? "bg-sand text-charcoal-dark" : "text-grey-light hover:text-sand"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <nav className="flex flex-wrap items-center gap-1">
           {pages.map((p) => {
             const count = threads.filter((t) => t.page_id === p.id).length;
@@ -264,18 +326,34 @@ export function ReviewClient({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {!selection && pageThreads.length === 0 && !showAll ? (
-              <p className="px-4 py-8 text-center text-sm leading-relaxed text-grey-muted">
-                Click any words on the page to leave a note or rewrite them.
-              </p>
+            {!selection ? (
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="text-sm leading-relaxed text-grey-muted">
+                  {mode === "notes"
+                    ? "Click anything on the page to leave a note or rewrite it. Buttons and links will not go anywhere while you are marking up."
+                    : "Click around as a visitor would. Switch to Leave notes when you want to mark something."}
+                </p>
+                {mode === "notes" ? (
+                  <button
+                    onClick={startGeneralNote}
+                    className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
+                  >
+                    Add a note about the whole page
+                  </button>
+                ) : null}
+              </div>
             ) : null}
 
             {/* composer */}
             {selection ? (
               <div className="border-b border-white/10 bg-blue-accent/5 px-4 py-3">
-                <p className="mb-2 font-mono text-[11px] text-blue-accent">{selection.label}</p>
+                <p className="mb-2 font-mono text-[11px] text-blue-accent">
+                  {selection.anchor === "page" ? "About this page" : selection.label}
+                </p>
 
-                <label className="mb-1 block text-xs text-grey-light">Your note</label>
+                <label className="mb-1 block text-xs text-grey-light">
+                  {selection.anchor === "page" ? "Anything about this page" : "Your note"}
+                </label>
                 <textarea
                   autoFocus
                   value={noteText}
@@ -285,7 +363,7 @@ export function ReviewClient({
                   className="w-full rounded border border-white/15 bg-charcoal-dark px-2.5 py-2 text-sm text-sand outline-none placeholder:text-grey-muted focus:border-blue-accent"
                 />
 
-                {selection.text ? (
+                {selection.text && selection.anchor !== "page" ? (
                   <>
                     <label className="mb-1 mt-3 block text-xs text-grey-light">
                       Rewrite it (optional)
@@ -372,6 +450,7 @@ export function ReviewClient({
         </aside>
       </div>
     </div>
+    </>
   );
 }
 
@@ -413,7 +492,9 @@ function ThreadCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-mono text-[11px] text-grey-muted">
-            {thread.anchor_label || `element ${thread.anchor}`}
+            {thread.anchor === "page"
+              ? "About this page"
+              : thread.anchor_label || `element ${thread.anchor}`}
           </span>
         </span>
         <span
