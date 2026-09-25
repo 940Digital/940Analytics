@@ -73,6 +73,7 @@ export default async function DashboardPage({
 
   let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
   let planTier: string | null = null;
+  let show = { progress: false, website: false, analytics: false };
 
   if (site) {
     const { data: website } = await supabase
@@ -84,7 +85,7 @@ export default async function DashboardPage({
     if (website) {
       const { data: project } = await supabase
         .from("crm_projects")
-        .select("id, plan_tier")
+        .select("id, plan_tier, show_progress, show_website, show_analytics")
         .eq("website_id", website.id)
         .eq("is_cancelled", false)
         .maybeSingle();
@@ -96,7 +97,18 @@ export default async function DashboardPage({
           .eq("project_id", project.id)
           .order("position", { ascending: true });
         projectSteps = steps ?? [];
-        planTier = (project as { plan_tier?: string }).plan_tier ?? null;
+        const p = project as {
+          plan_tier?: string;
+          show_progress?: boolean;
+          show_website?: boolean;
+          show_analytics?: boolean;
+        };
+        planTier = p.plan_tier ?? null;
+        show = {
+          progress: !!p.show_progress,
+          website: !!p.show_website,
+          analytics: !!p.show_analytics,
+        };
       }
     }
   }
@@ -106,6 +118,19 @@ export default async function DashboardPage({
   // handing that client a script tag with paste instructions is asking them to
   // do the job they are paying us for. No plan yet means a self-serve signup.
   const selfInstall = planTier === null || planTier === "analytics";
+
+  // A self-serve signup has no CRM project behind it and nobody to decide what
+  // they are shown, so they get everything they signed up for.
+  if (planTier === null) show = { progress: false, website: true, analytics: true };
+
+  const showWebsite = show.website && !!reviews && reviews.length > 0;
+  const showProgress = show.progress && projectSteps.length > 0;
+  const showAnalytics = show.analytics && !!site;
+  const modules = [showWebsite, showProgress, showAnalytics].filter(Boolean).length;
+
+  // With one module a two-column grid leaves a hole where the other should be,
+  // so the layout only splits once there is something to put on both sides.
+  const sideColumn = showProgress && (showWebsite || showAnalytics);
 
   const realVisits = sessions.filter((v) => !v.is_bot).length;
   const botHits = sessions.filter((v) => v.is_bot).length;
@@ -147,123 +172,94 @@ export default async function DashboardPage({
               </div>
             ) : null}
 
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* ---- what they came here to do -------------------------- */}
-              <div className="space-y-6 lg:col-span-2">
-                {reviews && reviews.length > 0 ? (
-                  <section className="rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
-                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                      Your website
-                    </h2>
-                    <p className="mt-2 max-w-prose text-sm text-grey-muted">
-                      Read the pages as they stand and mark up anything you want changed.
-                      Click any words to leave a note or rewrite them.
-                    </p>
-                    <div className="mt-4 space-y-2">
-                      {reviews.map((r) => (
-                        <a
-                          key={r.id}
-                          href={`/review/${r.id}`}
-                          className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
-                        >
-                          <span className="truncate">
-                            {reviews.length === 1 ? "View my website" : r.title}
-                          </span>
-                          <span aria-hidden className="shrink-0">&rarr;</span>
-                        </a>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                {site && hasTraffic ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                      <StatTile label="Sessions" value={sessions.length} />
-                      <StatTile label="Real visitors" value={realVisits} tone="good" />
-                      <StatTile label="Bots filtered" value={botHits} tone="muted" />
-                    </div>
-
-                    <SessionChart siteId={site.id} initialSessions={chartInitialSessions} />
-
-                    <details className="group rounded-lg border border-charcoal-text/10 bg-white">
-                      <summary className="cursor-pointer list-none px-5 py-3 text-sm font-medium text-charcoal-text">
-                        <span className="group-open:hidden">Show recent visits</span>
-                        <span className="hidden group-open:inline">Hide recent visits</span>
-                      </summary>
-                      <div className="overflow-x-auto border-t border-charcoal-text/10">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-charcoal-text/10 text-left text-xs uppercase tracking-wide text-grey-muted">
-                              <th className="px-4 py-2 font-medium">Time</th>
-                              <th className="px-4 py-2 font-medium">Referrer</th>
-                              <th className="px-4 py-2 font-medium">Outcome</th>
-                              <th className="px-4 py-2 font-medium">Type</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sessions.slice(0, 10).map((v) => (
-                              <tr key={v.id} className="border-b border-charcoal-text/5 last:border-0">
-                                <td className="whitespace-nowrap px-4 py-2.5 text-charcoal-text">
-                                  {new Date(v.session_start).toLocaleString()}
-                                </td>
-                                <td className="px-4 py-2.5 text-grey-muted">
-                                  {v.referrer || "Direct"}
-                                </td>
-                                <td className="px-4 py-2.5 text-grey-muted">
-                                  {v.is_bounce ? "Bounced" : "Browsed"}
-                                </td>
-                                <td className="px-4 py-2.5">
-                                  {v.is_bot ? (
-                                    <span className="rounded-full bg-grey-light/40 px-2 py-0.5 text-xs font-medium text-grey-muted">
-                                      Bot
-                                    </span>
-                                  ) : (
-                                    <span className="rounded-full bg-blue-accent/10 px-2 py-0.5 text-xs font-medium text-blue-accent">
-                                      Human
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+            {modules === 0 ? (
+              <section className="rounded-lg border border-charcoal-text/10 bg-white px-6 py-12 text-center">
+                <h2 className="font-display text-lg font-bold text-charcoal-text">
+                  Nothing to show just yet
+                </h2>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-grey-muted">
+                  We are still working behind the scenes. This is where your site and
+                  your numbers will appear.
+                </p>
+              </section>
+            ) : (
+              <div className={sideColumn ? "grid gap-6 lg:grid-cols-3" : "space-y-6"}>
+                <div className={sideColumn ? "space-y-6 lg:col-span-2" : "space-y-6"}>
+                  {showWebsite ? (
+                    <section className="rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
+                      <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                        Your website
+                      </h2>
+                      <p className="mt-2 max-w-prose text-sm text-grey-muted">
+                        Read the pages as they stand and mark up anything you want changed.
+                        Click any words to leave a note or rewrite them.
+                      </p>
+                      <div className="mt-4 space-y-2">
+                        {reviews!.map((r) => (
+                          <a
+                            key={r.id}
+                            href={`/review/${r.id}`}
+                            className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
+                          >
+                            <span className="truncate">
+                              {reviews!.length === 1 ? "View my website" : r.title}
+                            </span>
+                            <span aria-hidden className="shrink-0">&rarr;</span>
+                          </a>
+                        ))}
                       </div>
-                    </details>
-                  </>
+                    </section>
+                  ) : null}
+
+                  {showAnalytics && hasTraffic ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                        <StatTile label="Sessions" value={sessions.length} />
+                        <StatTile label="Real visitors" value={realVisits} tone="good" />
+                        <StatTile label="Bots filtered" value={botHits} tone="muted" />
+                      </div>
+                      <SessionChart siteId={site!.id} initialSessions={chartInitialSessions} />
+                    </>
+                  ) : null}
+
+                  {showAnalytics && !hasTraffic ? (
+                    <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
+                      <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                        Visitors
+                      </h2>
+                      <p className="mt-2 text-sm text-grey-muted">
+                        Tracking is set up on {site!.domain}. Numbers appear here once the
+                        site is live and people start arriving.
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {/* Progress rides in the main column when there is no side */}
+                  {showProgress && !sideColumn ? (
+                    <ProjectProgress steps={projectSteps} />
+                  ) : null}
+
+                  {selfInstall && site ? (
+                    <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
+                      <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                        Tracking snippet
+                      </h2>
+                      <p className="mt-2 text-xs text-grey-muted">
+                        Paste this before the closing <code>&lt;/body&gt;</code> on every
+                        page you want counted.
+                      </p>
+                      <SnippetBox siteId={site.id} />
+                    </section>
+                  ) : null}
+                </div>
+
+                {sideColumn ? (
+                  <div className="h-full space-y-6">
+                    <ProjectProgress steps={projectSteps} />
+                  </div>
                 ) : null}
               </div>
-
-              {/* ---- context, kept out of the way ----------------------- */}
-              <div className="space-y-6">
-                <ProjectProgress steps={projectSteps} />
-
-                {site && !hasTraffic ? (
-                  <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
-                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                      Visitors
-                    </h2>
-                    <p className="mt-2 text-sm text-grey-muted">
-                      Tracking is set up on {site.domain}. Numbers appear here once the
-                      site is live and people start arriving.
-                    </p>
-                  </section>
-                ) : null}
-
-                {selfInstall && site ? (
-                  <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
-                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                      Tracking snippet
-                    </h2>
-                    <p className="mt-2 text-xs text-grey-muted">
-                      Paste this before the closing <code>&lt;/body&gt;</code> on every
-                      page you want counted.
-                    </p>
-                    <SnippetBox siteId={site.id} />
-                  </section>
-                ) : null}
-              </div>
-            </div>
+            )}
           </>
         )}
       </div>
