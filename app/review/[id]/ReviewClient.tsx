@@ -328,9 +328,9 @@ export function ReviewClient({
                   Click anything on the page to leave a note or rewrite it.
                 </p>
                 <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
-                  Nothing on the page will take you anywhere, so a button or a link
-                  can be commented on like anything else. To move between pages, use
-                  the page names along the top.
+                  Links and buttons leave a note instead of opening, so you can
+                  comment on those too. Use the page names along the top to move
+                  between pages.
                 </p>
                 <button
                   onClick={startGeneralNote}
