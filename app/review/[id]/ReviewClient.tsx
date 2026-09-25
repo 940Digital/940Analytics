@@ -324,10 +324,13 @@ export function ReviewClient({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!selection ? (
               <div className="border-b border-white/10 px-4 py-3">
-                <p className="text-sm leading-relaxed text-grey-muted">
-                  Click anything on the page to leave a note or rewrite it. Nothing on
-                  the page will take you anywhere, so a button or a link can be
-                  commented on like everything else.
+                <p className="text-sm font-medium leading-relaxed text-sand">
+                  Click anything on the page to leave a note or rewrite it.
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
+                  Nothing on the page will take you anywhere, so a button or a link
+                  can be commented on like anything else. To move between pages, use
+                  the page names along the top.
                 </p>
                 <button
                   onClick={startGeneralNote}
