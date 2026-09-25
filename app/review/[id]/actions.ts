@@ -132,3 +132,37 @@ export async function updateThreadSuggestion(formData: FormData) {
   revalidatePath(`/review/${reviewId}`);
   return { ok: true };
 }
+
+/**
+ * Removes a note and everything said under it. The row level security policy
+ * allows the author or the agency account and nobody else, so a client can
+ * take back their own note but never somebody else's.
+ */
+export async function deleteThread(formData: FormData) {
+  const { supabase, user } = await me();
+  if (!user) return { error: "Please sign in again." };
+
+  const threadId = String(formData.get("threadId") || "");
+  const reviewId = String(formData.get("reviewId") || "");
+
+  const { error } = await supabase.from("rv_threads").delete().eq("id", threadId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/review/${reviewId}`);
+  return { ok: true };
+}
+
+/** Removes one reply, leaving the note and the rest of the thread alone. */
+export async function deleteMessage(formData: FormData) {
+  const { supabase, user } = await me();
+  if (!user) return { error: "Please sign in again." };
+
+  const messageId = String(formData.get("messageId") || "");
+  const reviewId = String(formData.get("reviewId") || "");
+
+  const { error } = await supabase.from("rv_messages").delete().eq("id", messageId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/review/${reviewId}`);
+  return { ok: true };
+}

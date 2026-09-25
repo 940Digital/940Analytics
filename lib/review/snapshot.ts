@@ -31,9 +31,6 @@ const ANNOTATOR = `
 
   var ORIGIN = window.location.origin;
   var selected = null;
-  /* 'notes' turns every click into a comment; 'browse' hands the page back so
-     links and buttons behave the way the visitor will experience them. */
-  var mode = 'notes';
 
   /* ---- number every element, in document order ---------------------- */
   var all = document.body ? document.body.querySelectorAll('*') : [];
@@ -101,8 +98,8 @@ const ANNOTATOR = `
   var css = document.createElement('style');
   css.textContent =
     '[data-rv-hot]{outline:2px solid #3194E0!important;outline-offset:1px;cursor:crosshair}' +
-    /* nothing should look pressable while notes are the point */
-    'html[data-rv-mode="notes"] a,html[data-rv-mode="notes"] button{cursor:crosshair!important}' +
+    /* nothing on the page is pressable here, so nothing should look it */
+    'a,button{cursor:crosshair!important}' +
     '[data-rv-sel]{outline:2px solid #3194E0!important;outline-offset:1px;' +
       'box-shadow:0 0 0 4px rgba(49,148,224,.28)!important}' +
     '#rv-layer{position:fixed;inset:0;pointer-events:none;z-index:2147483000}' +
@@ -122,7 +119,6 @@ const ANNOTATOR = `
   /* ---- hover ---------------------------------------------------------- */
   var hot = null;
   document.addEventListener('mouseover', function (e) {
-    if (mode !== 'notes') { if (hot) { hot.removeAttribute('data-rv-hot'); hot = null; } return; }
     var n = nearest(e.target);
     if (n === hot) return;
     if (hot) hot.removeAttribute('data-rv-hot');
@@ -137,23 +133,6 @@ const ANNOTATOR = `
   /* ---- click: select, or follow an internal link ---------------------- */
   document.addEventListener('click', function (e) {
     var link = e.target.closest ? e.target.closest('a[href]') : null;
-
-    /* Browsing: let the page be the page. Internal links still change the
-       reviewer's own page rather than loading a file out of the asset route,
-       and outside links stay put, because a review is not a place to wander
-       off to someone else's site. */
-    if (mode !== 'notes') {
-      if (!link) return;
-      var to = link.getAttribute('href') || '';
-      e.preventDefault();
-      if (to && to.charAt(0) !== '#' && !/^(https?:|mailto:|tel:)/i.test(to)) {
-        post({ type: 'rv:nav', href: to.split('/').pop() });
-      } else if (to.charAt(0) === '#') {
-        var anchorEl = document.getElementById(to.slice(1));
-        if (anchorEl) anchorEl.scrollIntoView({ behavior: 'smooth' });
-      }
-      return;
-    }
 
     if (link) {
       var href = link.getAttribute('href') || '';
@@ -234,24 +213,12 @@ const ANNOTATOR = `
   window.addEventListener('message', function (e) {
     if (e.origin !== ORIGIN || !e.data) return;
     if (e.data.type === 'rv:marks') { marks = e.data.marks || []; redraw(); }
-    if (e.data.type === 'rv:mode') {
-      mode = e.data.mode === 'browse' ? 'browse' : 'notes';
-      if (mode !== 'notes') {
-        if (hot) { hot.removeAttribute('data-rv-hot'); hot = null; }
-        select(null);
-      }
-      document.documentElement.setAttribute('data-rv-mode', mode);
-    }
     if (e.data.type === 'rv:select') { select(e.data.anchor); }
     if (e.data.type === 'rv:scrollTo') {
       var el = document.querySelector('[data-rv-i="' + e.data.anchor + '"]');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
-
-  /* set before the parent's first message, so the cursor is right from the
-     opening frame rather than after a round trip */
-  document.documentElement.setAttribute('data-rv-mode', mode);
 
   post({ type: 'rv:ready', count: all.length });
 })();

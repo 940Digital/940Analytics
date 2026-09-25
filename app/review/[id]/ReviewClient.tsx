@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { addThread, addMessage, setThreadStatus } from "./actions";
+import {
+  addThread,
+  addMessage,
+  setThreadStatus,
+  deleteThread,
+  deleteMessage,
+} from "./actions";
 
 export type Msg = {
   id: string;
@@ -76,7 +82,6 @@ export function ReviewClient({
   const [pending, startTransition] = useTransition();
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [mode, setMode] = useState<"notes" | "browse">("notes");
 
   const pageThreads = useMemo(
     () => threads.filter((t) => t.page_id === activePageId),
@@ -90,16 +95,6 @@ export function ReviewClient({
     pageThreads.forEach((t, i) => m.set(t.id, i + 1));
     return m;
   }, [pageThreads]);
-
-  const sendMode = useCallback(
-    (next: "notes" | "browse") => {
-      frame.current?.contentWindow?.postMessage(
-        { type: "rv:mode", mode: next },
-        window.location.origin
-      );
-    },
-    []
-  );
 
   const sendMarks = useCallback(() => {
     frame.current?.contentWindow?.postMessage(
@@ -121,10 +116,7 @@ export function ReviewClient({
       if (e.origin !== window.location.origin || !e.data) return;
       const d = e.data as Record<string, string>;
 
-      if (d.type === "rv:ready") {
-        sendMarks();
-        sendMode(mode);
-      }
+      if (d.type === "rv:ready") sendMarks();
 
       if (d.type === "rv:select") {
         setSelection({ anchor: d.anchor, label: d.label, text: d.text, tag: d.tag });
@@ -151,11 +143,7 @@ export function ReviewClient({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [pages, reviewId, router, sendMarks, sendMode, mode]);
-
-  useEffect(() => {
-    sendMode(mode);
-  }, [mode, sendMode]);
+  }, [pages, reviewId, router, sendMarks]);
 
   useEffect(() => {
     sendMarks();
@@ -208,6 +196,31 @@ export function ReviewClient({
     });
   }
 
+  function removeThread(threadId: string) {
+    const fd = new FormData();
+    fd.set("reviewId", reviewId);
+    fd.set("threadId", threadId);
+    startTransition(async () => {
+      const res = await deleteThread(fd);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      setOpenThread(null);
+      router.refresh();
+    });
+  }
+
+  function removeMessage(messageId: string) {
+    const fd = new FormData();
+    fd.set("reviewId", reviewId);
+    fd.set("messageId", messageId);
+    startTransition(async () => {
+      await deleteMessage(fd);
+      router.refresh();
+    });
+  }
+
   function mark(threadId: string, next: string) {
     const fd = new FormData();
     fd.set("reviewId", reviewId);
@@ -251,23 +264,6 @@ export function ReviewClient({
           <h1 className="truncate font-display text-sm font-semibold">{title}</h1>
           {note ? <p className="truncate text-xs text-grey-muted">{note}</p> : null}
         </div>
-        <div className="flex shrink-0 items-center rounded-md bg-white/10 p-0.5">
-          {([
-            ["notes", "Leave notes"],
-            ["browse", "Look around"],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setMode(value)}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition ${
-                mode === value ? "bg-sand text-charcoal-dark" : "text-grey-light hover:text-sand"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         <nav className="flex flex-wrap items-center gap-1">
           {pages.map((p) => {
             const count = threads.filter((t) => t.page_id === p.id).length;
@@ -329,18 +325,16 @@ export function ReviewClient({
             {!selection ? (
               <div className="border-b border-white/10 px-4 py-3">
                 <p className="text-sm leading-relaxed text-grey-muted">
-                  {mode === "notes"
-                    ? "Click anything on the page to leave a note or rewrite it. Buttons and links will not go anywhere while you are marking up."
-                    : "Click around as a visitor would. Switch to Leave notes when you want to mark something."}
+                  Click anything on the page to leave a note or rewrite it. Nothing on
+                  the page will take you anywhere, so a button or a link can be
+                  commented on like everything else.
                 </p>
-                {mode === "notes" ? (
-                  <button
-                    onClick={startGeneralNote}
-                    className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
-                  >
-                    Add a note about the whole page
-                  </button>
-                ) : null}
+                <button
+                  onClick={startGeneralNote}
+                  className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
+                >
+                  Add a note about the whole page
+                </button>
               </div>
             ) : null}
 
@@ -425,6 +419,8 @@ export function ReviewClient({
                 }}
                 onReply={reply}
                 onMark={mark}
+                onDelete={removeThread}
+                onDeleteMessage={removeMessage}
               />
             ))}
           </div>
@@ -464,6 +460,8 @@ function ThreadCard({
   onFocus,
   onReply,
   onMark,
+  onDelete,
+  onDeleteMessage,
 }: {
   thread: Thread;
   n?: number;
@@ -474,8 +472,12 @@ function ThreadCard({
   onFocus: () => void;
   onReply: (id: string, body: string, reset: () => void) => void;
   onMark: (id: string, status: string) => void;
+  onDelete: (id: string) => void;
+  onDeleteMessage: (id: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const mine = thread.created_by === userId;
   const changed =
     thread.suggested_text && thread.suggested_text !== (thread.original_text || "");
 
@@ -522,15 +524,27 @@ function ThreadCard({
           ?.slice()
           .sort((a, b) => a.created_at.localeCompare(b.created_at))
           .map((m) => (
-            <div key={m.id} className="text-xs leading-relaxed">
-              <span
-                className={`font-semibold ${
-                  m.created_by === userId ? "text-blue-accent" : "text-grey-light"
-                }`}
-              >
-                {m.author_name || "Someone"}
+            <div key={m.id} className="group/msg flex items-start gap-2 text-xs leading-relaxed">
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`font-semibold ${
+                    m.created_by === userId ? "text-blue-accent" : "text-grey-light"
+                  }`}
+                >
+                  {m.author_name || "Someone"}
+                </span>
+                <span className="ml-2 whitespace-pre-wrap text-grey-light">{m.body}</span>
               </span>
-              <span className="ml-2 whitespace-pre-wrap text-grey-light">{m.body}</span>
+              {m.created_by === userId || isAgency ? (
+                <button
+                  onClick={() => onDeleteMessage(m.id)}
+                  disabled={pending}
+                  aria-label="Delete this reply"
+                  className="shrink-0 text-grey-muted opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover/msg:opacity-100 disabled:opacity-30"
+                >
+                  &times;
+                </button>
+              ) : null}
             </div>
           ))}
       </div>
@@ -558,20 +572,49 @@ function ThreadCard({
             </button>
           </div>
 
-          {isAgency ? (
-            <div className="mt-2 flex gap-1.5">
-              {(["accepted", "declined", "open"] as const).map((s) => (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {isAgency
+              ? (["accepted", "declined", "open"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => onMark(thread.id, s)}
+                    disabled={pending || thread.status === s}
+                    className="rounded border border-white/15 px-2 py-1 text-[11px] text-grey-light transition hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {STATUS_LABEL[s]}
+                  </button>
+                ))
+              : null}
+
+            {mine || isAgency ? (
+              confirming ? (
+                <span className="ml-auto flex items-center gap-2 text-[11px]">
+                  <span className="text-grey-light">Delete this note?</span>
+                  <button
+                    onClick={() => onDelete(thread.id)}
+                    disabled={pending}
+                    className="font-semibold text-red-400 hover:underline disabled:opacity-40"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setConfirming(false)}
+                    className="text-grey-muted hover:underline"
+                  >
+                    Keep
+                  </button>
+                </span>
+              ) : (
                 <button
-                  key={s}
-                  onClick={() => onMark(thread.id, s)}
-                  disabled={pending || thread.status === s}
-                  className="rounded border border-white/15 px-2 py-1 text-[11px] text-grey-light transition hover:bg-white/10 disabled:opacity-40"
+                  onClick={() => setConfirming(true)}
+                  disabled={pending}
+                  className="ml-auto text-[11px] text-grey-muted transition hover:text-red-400 disabled:opacity-40"
                 >
-                  {STATUS_LABEL[s]}
+                  Delete note
                 </button>
-              ))}
-            </div>
-          ) : null}
+              )
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
