@@ -132,29 +132,17 @@ const ANNOTATOR = `
 
   /* ---- click: select, or follow an internal link ---------------------- */
   document.addEventListener('click', function (e) {
+    /* Anchors first and unconditionally. Their default has to go whatever
+       happens next, or a stray one would take the frame off to the asset
+       route and out of the review entirely. */
     var link = e.target.closest ? e.target.closest('a[href]') : null;
-
-    if (link) {
-      var href = link.getAttribute('href') || '';
-      e.preventDefault();
-      e.stopPropagation();
-      if (href && href.charAt(0) !== '#' && !/^(https?:|mailto:|tel:)/i.test(href)) {
-        post({ type: 'rv:nav', href: href.split('/').pop() });
-        return;
-      }
-      if (href.charAt(0) === '#') {
-        var target = document.getElementById(href.slice(1));
-        if (target) target.scrollIntoView({ behavior: 'smooth' });
-        return;
-      }
-      return; /* external links do nothing inside a review */
-    }
+    if (link) e.preventDefault();
 
     var n = nearest(e.target);
     if (!n) return;
+    select(n.getAttribute('data-rv-i'));
     e.preventDefault();
     e.stopPropagation();
-    select(n.getAttribute('data-rv-i'));
     post({
       type: 'rv:select',
       anchor: n.getAttribute('data-rv-i'),

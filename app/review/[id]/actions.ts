@@ -15,14 +15,30 @@ async function me() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  /* Taken off the session rather than looked up, because accounts is
-     select-own-or-master: a client reading Owen's row gets nothing back. */
-  const name =
+  /* Your own accounts row is always readable under select-own-or-master, and
+     it is the only place some accounts carry a real name: the agency login has
+     nothing in its auth metadata, so the old fallback signed its notes
+     "940digital". The name is stored on the note itself, because reading it
+     back off accounts later would show a client their own name and a blank
+     beside everybody else's. */
+  let name: string | null = null;
+
+  if (user) {
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    name = account?.display_name ?? null;
+  }
+
+  const resolved =
+    name ||
     (user?.user_metadata?.display_name as string | undefined) ||
     user?.email?.split("@")[0] ||
     "Someone";
 
-  return { supabase, user, name };
+  return { supabase, user, name: resolved };
 }
 
 export async function addThread(formData: FormData) {

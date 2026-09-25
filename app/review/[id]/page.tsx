@@ -97,6 +97,8 @@ export default async function ReviewPage({
       activePageId={active.id}
       threads={(threads ?? []) as unknown as Thread[]}
       userId={user.id}
+      viewerName={account?.display_name || user.email?.split("@")[0] || "Someone"}
+      viewerEmail={user.email ?? ""}
       isAgency={isMaster}
     />
   );

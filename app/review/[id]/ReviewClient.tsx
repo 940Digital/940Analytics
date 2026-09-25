@@ -61,6 +61,8 @@ export function ReviewClient({
   activePageId,
   threads,
   userId,
+  viewerName,
+  viewerEmail,
   isAgency,
 }: {
   reviewId: string;
@@ -71,6 +73,8 @@ export function ReviewClient({
   activePageId: string;
   threads: Thread[];
   userId: string;
+  viewerName: string;
+  viewerEmail: string;
   isAgency: boolean;
 }) {
   const router = useRouter();
@@ -135,10 +139,6 @@ export function ReviewClient({
         });
       }
 
-      if (d.type === "rv:nav") {
-        const next = pages.find((p) => p.path.endsWith(d.href));
-        if (next) router.push(`/review/${reviewId}?page=${next.id}`);
-      }
     }
 
     window.addEventListener("message", onMessage);
@@ -263,6 +263,24 @@ export function ReviewClient({
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-display text-sm font-semibold">{title}</h1>
           {note ? <p className="truncate text-xs text-grey-muted">{note}</p> : null}
+        </div>
+
+        {/* Whose name goes on a note is not obvious from a link someone was
+            handed, and signing a client's name to your own feedback is the
+            kind of mistake you only notice afterwards. */}
+        <div className="flex shrink-0 items-center gap-2 text-xs">
+          <span className="text-grey-muted">Notes signed</span>
+          <span
+            title={viewerEmail}
+            className={`rounded px-2 py-1 font-medium ${
+              isAgency ? "bg-white/10 text-sand" : "bg-blue-accent/20 text-blue-accent"
+            }`}
+          >
+            {viewerName}
+          </span>
+          <Link href="/login" className="text-grey-muted underline hover:text-sand">
+            Switch
+          </Link>
         </div>
         <nav className="flex flex-wrap items-center gap-1">
           {pages.map((p) => {
