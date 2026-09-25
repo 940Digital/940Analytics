@@ -59,14 +59,14 @@ export default async function ReviewPage({
           </h1>
           <p className="mt-3 text-grey-muted">
             {isMaster
-              ? "Pick the site's folder on the reviews page and it will appear here."
+              ? "Nothing has been pushed into this one yet. Load it from the CRM."
               : "Your site is still being prepared for review. You will hear from us as soon as there is something to read."}
           </p>
           <Link
-            href={isMaster ? "/review" : "/dashboard"}
+            href="/dashboard"
             className="mt-6 inline-block rounded-md bg-blue-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-hover"
           >
-            {isMaster ? "Go and push a site in" : "Back to my dashboard"}
+            Back to my dashboard
           </Link>
         </div>
       </main>
@@ -97,7 +97,7 @@ export default async function ReviewPage({
       activePageId={active.id}
       threads={(threads ?? []) as unknown as Thread[]}
       userId={user.id}
-      isMaster={isMaster}
+      isAgency={isMaster}
     />
   );
 }

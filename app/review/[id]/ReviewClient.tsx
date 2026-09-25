@@ -55,7 +55,7 @@ export function ReviewClient({
   activePageId,
   threads,
   userId,
-  isMaster,
+  isAgency,
 }: {
   reviewId: string;
   title: string;
@@ -65,7 +65,7 @@ export function ReviewClient({
   activePageId: string;
   threads: Thread[];
   userId: string;
-  isMaster: boolean;
+  isAgency: boolean;
 }) {
   const router = useRouter();
   const frame = useRef<HTMLIFrameElement>(null);
@@ -331,7 +331,7 @@ export function ReviewClient({
                 thread={t}
                 n={numberOf.get(t.id)}
                 userId={userId}
-                isMaster={isMaster}
+                isAgency={isAgency}
                 isOpen={openThread === t.id}
                 pending={pending}
                 onFocus={() => {
@@ -351,7 +351,7 @@ export function ReviewClient({
             ))}
           </div>
 
-          {isMaster && accepted.length > 0 ? (
+          {isAgency && accepted.length > 0 ? (
             <div className="shrink-0 border-t border-white/10 px-4 py-3">
               <button
                 onClick={() => {
@@ -379,7 +379,7 @@ function ThreadCard({
   thread,
   n,
   userId,
-  isMaster,
+  isAgency,
   isOpen,
   pending,
   onFocus,
@@ -389,7 +389,7 @@ function ThreadCard({
   thread: Thread;
   n?: number;
   userId: string;
-  isMaster: boolean;
+  isAgency: boolean;
   isOpen: boolean;
   pending: boolean;
   onFocus: () => void;
@@ -477,7 +477,7 @@ function ThreadCard({
             </button>
           </div>
 
-          {isMaster ? (
+          {isAgency ? (
             <div className="mt-2 flex gap-1.5">
               {(["accepted", "declined", "open"] as const).map((s) => (
                 <button

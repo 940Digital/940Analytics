@@ -29,16 +29,6 @@ export default async function DashboardPage({
 
   const site = sites?.[0] ?? null;
 
-  // The tracking snippet is our tooling, not theirs: we install it. Showing a
-  // client a block of JavaScript and telling them to paste it before </body>
-  // is asking them to do a job they are paying us for.
-  const { data: viewer } = await supabase
-    .from("accounts")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const isMaster = viewer?.role === "master";
-
   // Row level security already limits this to reviews the viewer was granted,
   // so there is no account_id filter to write here. A client sees theirs; the
   // master account sees every one.
@@ -82,6 +72,7 @@ export default async function DashboardPage({
   }
 
   let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
+  let planTier: string | null = null;
 
   if (site) {
     const { data: website } = await supabase
@@ -93,7 +84,7 @@ export default async function DashboardPage({
     if (website) {
       const { data: project } = await supabase
         .from("crm_projects")
-        .select("id")
+        .select("id, plan_tier")
         .eq("website_id", website.id)
         .eq("is_cancelled", false)
         .maybeSingle();
@@ -105,9 +96,16 @@ export default async function DashboardPage({
           .eq("project_id", project.id)
           .order("position", { ascending: true });
         projectSteps = steps ?? [];
+        planTier = (project as { plan_tier?: string }).plan_tier ?? null;
       }
     }
   }
+
+  // Analytics-only customers install the snippet on their own site, so they
+  // need it in front of them. On any built plan we install it ourselves, and
+  // handing that client a script tag with paste instructions is asking them to
+  // do the job they are paying us for. No plan yet means a self-serve signup.
+  const selfInstall = planTier === null || planTier === "analytics";
 
   const realVisits = sessions.filter((v) => !v.is_bot).length;
   const botHits = sessions.filter((v) => v.is_bot).length;
@@ -252,14 +250,14 @@ export default async function DashboardPage({
                   </section>
                 ) : null}
 
-                {isMaster && site ? (
+                {selfInstall && site ? (
                   <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
                     <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
                       Tracking snippet
                     </h2>
                     <p className="mt-2 text-xs text-grey-muted">
-                      Before the closing <code>&lt;/body&gt;</code> on every page. Only you
-                      see this.
+                      Paste this before the closing <code>&lt;/body&gt;</code> on every
+                      page you want counted.
                     </p>
                     <SnippetBox siteId={site.id} />
                   </section>
