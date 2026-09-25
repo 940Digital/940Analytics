@@ -5,6 +5,7 @@ import { logOut, createSite } from "@/app/auth/actions";
 import { SnippetBox } from "@/components/SnippetBox";
 import { ProjectProgress } from "@/components/ProjectProgress";
 import { SessionChart } from "@/components/SessionChart";
+import { StatTile } from "@/components/StatTile";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,16 @@ export default async function DashboardPage({
     .order("created_at", { ascending: true });
 
   const site = sites?.[0] ?? null;
+
+  // The tracking snippet is our tooling, not theirs: we install it. Showing a
+  // client a block of JavaScript and telling them to paste it before </body>
+  // is asking them to do a job they are paying us for.
+  const { data: viewer } = await supabase
+    .from("accounts")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const isMaster = viewer?.role === "master";
 
   // Row level security already limits this to reviews the viewer was granted,
   // so there is no account_id filter to write here. A client sees theirs; the
@@ -98,6 +109,10 @@ export default async function DashboardPage({
     }
   }
 
+  const realVisits = sessions.filter((v) => !v.is_bot).length;
+  const botHits = sessions.filter((v) => v.is_bot).length;
+  const hasTraffic = sessions.length > 0;
+
   return (
     <main className="min-h-screen bg-sand">
       <header className="border-b border-charcoal-text/10 bg-white/60">
@@ -109,7 +124,7 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div className="mx-auto max-w-5xl px-6 py-8">
         {searchParams.error && (
           <p className="mb-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
             {searchParams.error}
@@ -121,113 +136,136 @@ export default async function DashboardPage({
           </p>
         )}
 
-        {reviews && reviews.length > 0 ? (
-          <section className="mb-8 rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
-            <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-              Your website
-            </h2>
-            <p className="mt-2 text-sm text-grey-muted">
-              Read the pages as they stand and mark up anything you want changed.
-              Click any words to leave a note or rewrite them.
-            </p>
-            <div className="mt-4 space-y-2">
-              {reviews.map((r) => (
-                <a
-                  key={r.id}
-                  href={`/review/${r.id}`}
-                  className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
-                >
-                  <span className="truncate">
-                    {reviews.length === 1 ? "View my website" : r.title}
-                  </span>
-                  <span aria-hidden className="shrink-0">&rarr;</span>
-                </a>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {!site ? (
+        {!site && (!reviews || reviews.length === 0) ? (
           <OnboardingCard />
         ) : (
           <>
-            <div className="mb-8 flex items-baseline justify-between">
-              <div>
+            {site ? (
+              <div className="mb-6">
                 <h1 className="font-display text-2xl font-bold text-charcoal-text">
                   {site.name}
                 </h1>
                 <p className="text-sm text-grey-muted">{site.domain}</p>
               </div>
-            </div>
+            ) : null}
 
-            <ProjectProgress steps={projectSteps} />
-
-            <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
-              <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                Your tracking snippet
-              </h2>
-              <p className="mt-2 text-sm text-grey-muted">
-                Paste this right before the closing <code>&lt;/body&gt;</code> tag on every page
-                you want tracked.
-              </p>
-              <SnippetBox siteId={site.id} />
-            </section>
-
-            <section className="mt-6">
-              <SessionChart siteId={site.id} initialSessions={chartInitialSessions} />
-            </section>
-
-            <section className="mt-10">
-              <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                Recent sessions
-              </h2>
-              <div className="mt-3 overflow-hidden rounded-lg border border-charcoal-text/10 bg-white">
-                {sessions.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-sm text-grey-muted">
-                    No sessions yet. Once your snippet is live on{" "}
-                    <span className="font-medium text-charcoal-text">{site.domain}</span>, real
-                    visits will start showing up here within a minute or two.
-                  </p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-charcoal-text/10 text-left text-xs uppercase tracking-wide text-grey-muted">
-                        <th className="px-4 py-2 font-medium">Time</th>
-                        <th className="px-4 py-2 font-medium">Referrer</th>
-                        <th className="px-4 py-2 font-medium">Outcome</th>
-                        <th className="px-4 py-2 font-medium">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sessions.map((s) => (
-                        <tr key={s.id} className="border-b border-charcoal-text/5 last:border-0">
-                          <td className="px-4 py-2.5 text-charcoal-text">
-                            {new Date(s.session_start).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2.5 text-grey-muted">
-                            {s.referrer || "Direct"}
-                          </td>
-                          <td className="px-4 py-2.5 text-grey-muted">
-                            {s.is_bounce ? "Bounced" : "Browsed"}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {s.is_bot ? (
-                              <span className="rounded-full bg-grey-light/40 px-2 py-0.5 text-xs font-medium text-grey-muted">
-                                Bot filtered
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-blue-accent/10 px-2 py-0.5 text-xs font-medium text-blue-accent">
-                                Human
-                              </span>
-                            )}
-                          </td>
-                        </tr>
+            <div className="grid gap-6 lg:grid-cols-3">
+              {/* ---- what they came here to do -------------------------- */}
+              <div className="space-y-6 lg:col-span-2">
+                {reviews && reviews.length > 0 ? (
+                  <section className="rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
+                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                      Your website
+                    </h2>
+                    <p className="mt-2 max-w-prose text-sm text-grey-muted">
+                      Read the pages as they stand and mark up anything you want changed.
+                      Click any words to leave a note or rewrite them.
+                    </p>
+                    <div className="mt-4 space-y-2">
+                      {reviews.map((r) => (
+                        <a
+                          key={r.id}
+                          href={`/review/${r.id}`}
+                          className="flex items-center justify-between gap-3 rounded-md bg-blue-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-hover"
+                        >
+                          <span className="truncate">
+                            {reviews.length === 1 ? "View my website" : r.title}
+                          </span>
+                          <span aria-hidden className="shrink-0">&rarr;</span>
+                        </a>
                       ))}
-                    </tbody>
-                  </table>
-                )}
+                    </div>
+                  </section>
+                ) : null}
+
+                {site && hasTraffic ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      <StatTile label="Sessions" value={sessions.length} />
+                      <StatTile label="Real visitors" value={realVisits} tone="good" />
+                      <StatTile label="Bots filtered" value={botHits} tone="muted" />
+                    </div>
+
+                    <SessionChart siteId={site.id} initialSessions={chartInitialSessions} />
+
+                    <details className="group rounded-lg border border-charcoal-text/10 bg-white">
+                      <summary className="cursor-pointer list-none px-5 py-3 text-sm font-medium text-charcoal-text">
+                        <span className="group-open:hidden">Show recent visits</span>
+                        <span className="hidden group-open:inline">Hide recent visits</span>
+                      </summary>
+                      <div className="overflow-x-auto border-t border-charcoal-text/10">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-charcoal-text/10 text-left text-xs uppercase tracking-wide text-grey-muted">
+                              <th className="px-4 py-2 font-medium">Time</th>
+                              <th className="px-4 py-2 font-medium">Referrer</th>
+                              <th className="px-4 py-2 font-medium">Outcome</th>
+                              <th className="px-4 py-2 font-medium">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sessions.slice(0, 10).map((v) => (
+                              <tr key={v.id} className="border-b border-charcoal-text/5 last:border-0">
+                                <td className="whitespace-nowrap px-4 py-2.5 text-charcoal-text">
+                                  {new Date(v.session_start).toLocaleString()}
+                                </td>
+                                <td className="px-4 py-2.5 text-grey-muted">
+                                  {v.referrer || "Direct"}
+                                </td>
+                                <td className="px-4 py-2.5 text-grey-muted">
+                                  {v.is_bounce ? "Bounced" : "Browsed"}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {v.is_bot ? (
+                                    <span className="rounded-full bg-grey-light/40 px-2 py-0.5 text-xs font-medium text-grey-muted">
+                                      Bot
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-blue-accent/10 px-2 py-0.5 text-xs font-medium text-blue-accent">
+                                      Human
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  </>
+                ) : null}
               </div>
-            </section>
+
+              {/* ---- context, kept out of the way ----------------------- */}
+              <div className="space-y-6">
+                <ProjectProgress steps={projectSteps} />
+
+                {site && !hasTraffic ? (
+                  <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
+                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                      Visitors
+                    </h2>
+                    <p className="mt-2 text-sm text-grey-muted">
+                      Tracking is set up on {site.domain}. Numbers appear here once the
+                      site is live and people start arriving.
+                    </p>
+                  </section>
+                ) : null}
+
+                {isMaster && site ? (
+                  <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
+                    <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
+                      Tracking snippet
+                    </h2>
+                    <p className="mt-2 text-xs text-grey-muted">
+                      Before the closing <code>&lt;/body&gt;</code> on every page. Only you
+                      see this.
+                    </p>
+                    <SnippetBox siteId={site.id} />
+                  </section>
+                ) : null}
+              </div>
+            </div>
           </>
         )}
       </div>

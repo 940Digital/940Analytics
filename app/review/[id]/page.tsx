@@ -36,16 +36,38 @@ export default async function ReviewPage({
     .eq("review_id", params.id)
     .order("sort", { ascending: true });
 
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("role, display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isMaster = account?.role === "master";
+
   const pageList = pages ?? [];
   if (pageList.length === 0) {
+    /* Two different people hit this, and telling a client that "no pages have
+       been pushed" tells them nothing they can act on. */
     return (
       <main className="min-h-screen bg-sand px-6 py-16 font-body text-charcoal-text">
         <div className="mx-auto max-w-lg text-center">
-          <Logo />
-          <h1 className="mt-8 font-display text-2xl">Nothing to review yet</h1>
+          <Link href="/dashboard">
+            <Logo dark size={22} />
+          </Link>
+          <h1 className="mt-8 font-display text-2xl font-bold">
+            {isMaster ? "This review is empty" : "Not quite ready"}
+          </h1>
           <p className="mt-3 text-grey-muted">
-            This review has been created but no pages have been pushed into it.
+            {isMaster
+              ? "Pick the site's folder on the reviews page and it will appear here."
+              : "Your site is still being prepared for review. You will hear from us as soon as there is something to read."}
           </p>
+          <Link
+            href={isMaster ? "/review" : "/dashboard"}
+            className="mt-6 inline-block rounded-md bg-blue-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-hover"
+          >
+            {isMaster ? "Go and push a site in" : "Back to my dashboard"}
+          </Link>
         </div>
       </main>
     );
@@ -64,14 +86,6 @@ export default async function ReviewPage({
       pageList.map((p) => p.id)
     )
     .order("created_at", { ascending: true });
-
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("role, display_name")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const isMaster = account?.role === "master";
 
   return (
     <ReviewClient
