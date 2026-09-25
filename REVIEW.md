@@ -65,6 +65,42 @@ Clicking any text selects the whole block it belongs to, not the italic
 fragment inside it, and offers two boxes: a note, and the words themselves to
 rewrite. You see the original and the suggestion side by side.
 
+## Provisioned accounts, and how to close them up
+
+Lindsay's account was created directly in the database on 2026-09-25 rather
+than through signup, so that no confirmation email was ever needed. Email
+confirmation is still ON project-wide, which is where it should stay: nothing
+was loosened to make this work, and there is no auth bypass anywhere in this
+codebase.
+
+What that leaves to tidy:
+
+- **The temporary password was chosen by the developer, not by her.** She
+  should change it on first login. Until she does, treat it as shared.
+- **Her CRM rows were made by the signup trigger**, so `crm_contacts` has her
+  email and null name and business. Worth filling in.
+- **She has no `sites` row**, so she has no analytics, only the review. That
+  is deliberate. Adding one later is what turns her into a tracking client.
+
+### Making another one
+
+Supabase's Admin API is the supported route and needs the service role key.
+Doing it in SQL instead means inserting two rows, and there is one trap:
+
+1. `auth.users` with `email_confirmed_at` set, plus a matching
+   `auth.identities` row with provider `email`. Password sign-in fails
+   without the identity.
+2. **The empty-string columns.** `confirmation_token`, `recovery_token`,
+   `email_change`, `email_change_token_new` and the phone equivalents must be
+   `''`, never NULL. GoTrue reads them into non-nullable strings, and a NULL
+   comes back as a 500 `"Database error querying schema"` on an otherwise
+   perfectly valid sign-in. This cost a debugging round; it is not guessable
+   from the error.
+
+Always finish by actually signing in against
+`/auth/v1/token?grant_type=password` before handing the account over. The rows
+can look completely correct and still not authenticate.
+
 ## Notes for later
 
 - Snapshots are frozen. Re-push after you change the site or the client will

@@ -4,6 +4,7 @@
  *
  *   node scripts/push-site.mjs --dir "../azekah-group" --title "Azekah Group copy review"
  *   node scripts/push-site.mjs --dir "../azekah-group" --review <uuid>
+ *   node scripts/push-site.mjs --dir "../azekah-group" --review <uuid> --dry-run
  *
  * Signs in as the master account and writes the pages and their assets
  * straight to Supabase, so there is no service key anywhere and row level
@@ -68,7 +69,12 @@ function walk(dir, root = dir, out = []) {
   return out;
 }
 
-function titleOf(html, fallback) {
+function titleOf(html, fallback, rel) {
+  /* The home page's title is the business name, which is a poor tab label
+     next to About and Services. Every other page reads "About | Azekah
+     Group", so splitting on the pipe gives the right word on its own. */
+  if (rel && basename(rel).startsWith("index")) return "Home";
+
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!m) return fallback;
   return m[1]
@@ -103,6 +109,28 @@ async function main() {
   if (!url || !key) {
     console.error("Missing NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY. Run this from the 940-analytics folder.");
     process.exit(1);
+  }
+
+  const files0 = walk(dir);
+  const dryRun = process.argv.includes("--dry-run");
+  if (dryRun) {
+    const pg = files0.filter(
+      (f) => extname(f.rel).toLowerCase() === ".html" && !exclude.includes(basename(f.rel))
+    );
+    const as = files0.filter((f) => extname(f.rel).toLowerCase() !== ".html");
+    console.log(`Would push ${pg.length} pages and ${as.length} assets from ${dir}\n`);
+    for (const f of pg) {
+      console.log(`  page  ${f.rel.padEnd(24)} ${titleOf(readFileSync(f.full, "utf8"), f.rel, f.rel)}`);
+    }
+    let bytes = 0;
+    for (const f of as) bytes += f.size;
+    for (const f of as) {
+      const over = f.size > MAX_ASSET ? "  OVER LIMIT" : "";
+      console.log(`  asset ${f.rel.padEnd(34)} ${(f.size / 1024).toFixed(0)}KB${over}`);
+    }
+    console.log(`\nTotal asset weight: ${(bytes / 1e6).toFixed(2)}MB`);
+    console.log(`Excluded: ${exclude.join(", ") || "nothing"}`);
+    return;
   }
 
   const rl = createInterface({ input: stdin, output: stdout });
@@ -159,7 +187,7 @@ async function main() {
       {
         review_id: reviewId,
         path: pages[i].rel,
-        title: titleOf(html, pages[i].rel),
+        title: titleOf(html, pages[i].rel, pages[i].rel),
         html,
         sort: i,
       },
