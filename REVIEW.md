@@ -27,24 +27,30 @@ review. The CRM owns none of these tables and fails soft if they are missing.
 
 ## Pushing a site in
 
-From this folder:
+Go to `/review` and pick the site's folder in **Push a site in**. It reads the
+files in your browser and writes them with the session you are already signed
+in with, so no password is typed anywhere and nothing is uploaded to a third
+party. Pick an existing review to refresh it, or make a new one.
 
-```bash
-node scripts/push-site.mjs --dir "../azekah-group" --title "Azekah Group copy review"
-```
+`blueprint.html` is skipped. Files over 6MB are skipped and named.
 
-It prints the review id. To refresh it later after edits:
+Snapshots are frozen, so re-push after you change the site or the client will
+be reading yesterday's words.
+
+### From the command line instead
+
+`scripts/push-site.mjs` does the same thing for scripting or bulk work. It
+signs in as your master account, so there is still no service key involved.
 
 ```bash
 node scripts/push-site.mjs --dir "../azekah-group" --review <id>
+node scripts/push-site.mjs --dir "../azekah-group" --title "New review"
+node scripts/push-site.mjs --dir "../azekah-group" --review <id> --dry-run
 ```
 
-The script signs in as your master account, so there is no service key
-anywhere and row level security is still deciding what may be written. Put
-`REVIEW_EMAIL` and `REVIEW_PASSWORD` in `.env.local` to skip the prompt.
-
-`blueprint.html` is excluded by default. Change that with
-`--exclude "a.html,b.html"`.
+It prompts for email and password, or reads `REVIEW_EMAIL` and
+`REVIEW_PASSWORD` from `.env.local`. `--exclude "a.html,b.html"` overrides
+what gets left out.
 
 ## Getting the client in
 
@@ -103,8 +109,6 @@ can look completely correct and still not authenticate.
 
 ## Notes for later
 
-- Snapshots are frozen. Re-push after you change the site or the client will
-  be reviewing yesterday's words.
 - Assets are stored as rows, base64 for binaries, with a 6MB ceiling per file.
   A photo-heavy site would be better served by Supabase Storage.
 - `rv_can_see` shows up in the Supabase security advisor as a definer function

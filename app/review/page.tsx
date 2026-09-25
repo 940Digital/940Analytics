@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Logo } from "@/components/Logo";
 import { InviteRow } from "./InviteRow";
+import { PushSite } from "./PushSite";
 
 export const dynamic = "force-dynamic";
 
@@ -78,17 +79,19 @@ export default async function ReviewsPage() {
 
         <h1 className="mt-8 font-display text-2xl font-bold">Client reviews</h1>
         <p className="mt-2 max-w-xl text-sm text-grey-muted">
-          A frozen copy of a site with the client&rsquo;s notes on it. Push pages in with{" "}
-          <code className="rounded bg-charcoal-text/10 px-1 py-0.5 font-mono text-xs">
-            node scripts/push-site.mjs
-          </code>
-          , then send the invite link.
+          A frozen copy of a site with the client&rsquo;s notes on it. Pick the
+          site&rsquo;s folder below, then send the invite link.
         </p>
+
+        <div className="mt-8">
+          <PushSite
+            reviews={(reviews ?? []).map((r) => ({ id: r.id, title: r.title }))}
+          />
+        </div>
 
         {(reviews ?? []).length === 0 ? (
           <p className="mt-10 rounded-lg border border-dashed border-charcoal-text/20 px-5 py-10 text-center text-sm text-grey-muted">
-            No reviews yet. Run the push script with{" "}
-            <span className="font-mono">--title</span> to make the first one.
+            No reviews yet. Pick a site folder above to make the first one.
           </p>
         ) : null}
 
