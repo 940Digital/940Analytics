@@ -42,14 +42,7 @@ export async function updateSession(request: NextRequest) {
      bounced back to the page they were sent, rather than to a dashboard they
      have no reason to be looking at. The invite route does its own handling,
      so leave that one alone. */
-  /* The handoff page has no session yet by definition: getting one is the
-     whole reason it exists. Bouncing it to a login would defeat it. */
-  if (
-    !user &&
-    path.startsWith("/review") &&
-    !path.startsWith("/review/invite") &&
-    !path.startsWith("/review/handoff")
-  ) {
+  if (!user && path.startsWith("/review") && !path.startsWith("/review/invite")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = `?next=${encodeURIComponent(path + request.nextUrl.search)}`;
