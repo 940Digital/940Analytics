@@ -278,8 +278,8 @@ export function ReviewClient({
           >
             {viewerName}
           </span>
-          <Link href="/login" className="text-grey-muted underline hover:text-sand">
-            Switch
+          <Link href="/dashboard" className="text-grey-muted underline hover:text-sand">
+            Dashboard
           </Link>
         </div>
         <nav className="flex flex-wrap items-center gap-1">
