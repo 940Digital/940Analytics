@@ -21,8 +21,20 @@ import { Logo } from "@/components/Logo";
  * If nothing answers, this is not a dead end. After a moment it simply goes on
  * to the review with whatever session the browser already had.
  */
-const CRM_ORIGIN =
-  process.env.NEXT_PUBLIC_CRM_ORIGIN ?? "https://94-d-crm-beta.vercel.app";
+/* Vercel serves the CRM on several hostnames at once, so pinning one meant
+   the handoff quietly failed whenever it was opened from any of the others. */
+const CRM_ORIGINS = (
+  process.env.NEXT_PUBLIC_CRM_ORIGIN ??
+  [
+    "https://94-d-crm-beta.vercel.app",
+    "https://94-d-crm-940-digital.vercel.app",
+    "https://94-d-crm-git-main-940-digital.vercel.app",
+    "http://localhost:3400",
+  ].join(",")
+)
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 function HandoffInner() {
   const router = useRouter();
@@ -42,7 +54,7 @@ function HandoffInner() {
     };
 
     const onMessage = async (event: MessageEvent) => {
-      if (event.origin !== CRM_ORIGIN || done.current) return;
+      if (!CRM_ORIGINS.includes(event.origin) || done.current) return;
       const data = event.data as {
         type?: string;
         access_token?: string;
@@ -65,17 +77,34 @@ function HandoffInner() {
 
     window.addEventListener("message", onMessage);
 
-    /* ask whoever opened this window for its session */
-    try {
-      window.opener?.postMessage({ type: "ag:handoff-ready" }, CRM_ORIGIN);
-    } catch {
-      /* no opener, or not allowed to reach it: fall through to the timer */
-    }
+    /* Keep asking rather than announcing once. A single ping races the
+       opener's listener and loses often enough to matter. The ping carries
+       nothing, so it can go to any origin; the reply carrying the session is
+       still only accepted from the CRM. */
+    let asks = 0;
+    const ask = () => {
+      asks += 1;
+      try {
+        window.opener?.postMessage({ type: "ag:handoff-ready" }, "*");
+      } catch {
+        /* no opener, or not reachable: the timer below takes over */
+      }
+      if (asks > 12 || done.current) window.clearInterval(ping);
+    };
 
-    const timer = window.setTimeout(go, 2500);
+    const ping = window.setInterval(ask, 200);
+    ask();
+
+    if (!window.opener) setState("Opening\u2026");
+
+    const timer = window.setTimeout(() => {
+      if (window.opener) setState("Could not carry your sign-in over. Opening anyway\u2026");
+      go();
+    }, 3000);
 
     return () => {
       window.removeEventListener("message", onMessage);
+      window.clearInterval(ping);
       window.clearTimeout(timer);
     };
   }, [router, to]);
