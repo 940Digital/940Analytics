@@ -11,7 +11,17 @@ type Step = {
  * a bounded height instead, stretching to match whatever sits beside it so the
  * two columns end level rather than one trailing off short.
  */
-export function ProjectProgress({ steps }: { steps: Step[] }) {
+export function ProjectProgress({
+  steps,
+  /* Off when the client is only shown what is done and what is in flight. The
+     total is then everything finished plus the one thing running, so a bar
+     would sit near full from the first week and a ratio would read as almost
+     there. Neither says anything true, so both go and the count stands alone. */
+  showBar = true,
+}: {
+  steps: Step[];
+  showBar?: boolean;
+}) {
   const live = steps.filter((s) => s.status !== "deleted");
   if (live.length === 0) return null;
 
@@ -25,18 +35,20 @@ export function ProjectProgress({ steps }: { steps: Step[] }) {
           Progress
         </h2>
         <p className="text-xs text-grey-muted">
-          {done.length} of {live.length}
+          {showBar ? `${done.length} of ${live.length}` : `${done.length} done`}
         </p>
       </div>
 
-      <div className="mt-3 h-1.5 shrink-0 overflow-hidden rounded-full bg-charcoal-text/10">
-        <div
-          className="h-full rounded-full bg-blue-accent transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      {showBar ? (
+        <div className="mt-3 h-1.5 shrink-0 overflow-hidden rounded-full bg-charcoal-text/10">
+          <div
+            className="h-full rounded-full bg-blue-accent transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
 
-      <ul className="-mr-2 mt-4 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-2">
+      <ul className={`-mr-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-2 ${showBar ? "mt-4" : "mt-3"}`}>
         {live.map((s) => {
           const isDone = s.status === "completed";
           const isNow = s.status === "active";

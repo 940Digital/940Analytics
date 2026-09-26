@@ -4,8 +4,7 @@ import { Logo } from "@/components/Logo";
 import { logOut, createSite } from "@/app/auth/actions";
 import { SnippetBox } from "@/components/SnippetBox";
 import { ProjectProgress } from "@/components/ProjectProgress";
-import { SessionChart } from "@/components/SessionChart";
-import { StatTile } from "@/components/StatTile";
+import { SiteAnalytics } from "@/components/SiteAnalytics";
 
 export const dynamic = "force-dynamic";
 
@@ -49,43 +48,22 @@ export default async function DashboardPage({
     .select("id, title, status, created_at")
     .order("created_at", { ascending: false });
 
-  let sessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
-  // Matches SessionChart's own default range (30 days, day buckets) exactly,
-  // so its first client render can reuse this instead of opening on a
-  // spinner and refetching data the page already has.
-  let chartInitialSessions: { id: string; session_start: string; is_bot: boolean; is_bounce: boolean | null; referrer: string | null }[] = [];
+  /* Only asked so the page knows whether there is anything to show yet. The
+     analytics panel fetches its own data per range on the client, the same way
+     it does in the CRM. */
+  let sessionCount = 0;
 
   if (site) {
-    const { data } = await supabase
+    const { count } = await supabase
       .from("sessions")
-      .select("id, session_start, is_bot, is_bounce, referrer")
-      .eq("site_id", site.id)
-      .order("session_start", { ascending: false })
-      .limit(25);
-    sessions = data ?? [];
-
-    const chartSince = new Date();
-    chartSince.setDate(chartSince.getDate() - 29);
-    chartSince.setHours(0, 0, 0, 0);
-    const chartAll: typeof chartInitialSessions = [];
-    for (let offset = 0; ; offset += 1000) {
-      const { data: page, error } = await supabase
-        .from("sessions")
-        .select("id, session_start, is_bot, is_bounce, referrer")
-        .eq("site_id", site.id)
-        .gte("session_start", chartSince.toISOString())
-        .order("session_start", { ascending: true })
-        .range(offset, offset + 999);
-      if (error || !page) break;
-      chartAll.push(...page);
-      if (page.length < 1000) break;
-    }
-    chartInitialSessions = chartAll;
+      .select("id", { count: "exact", head: true })
+      .eq("site_id", site.id);
+    sessionCount = count ?? 0;
   }
 
   let projectSteps: { id: string; title: string; status: string; completed_at: string | null }[] = [];
   let planTier: string | null = null;
-  let show = { progress: false, website: false, analytics: false };
+  let show = { progress: false, pending: false, website: false, analytics: false };
 
   if (site) {
     const { data: website } = await supabase
@@ -112,12 +90,14 @@ export default async function DashboardPage({
         const p = project as {
           plan_tier?: string;
           show_progress?: boolean;
+          show_pending_steps?: boolean;
           show_website?: boolean;
           show_analytics?: boolean;
         };
         planTier = p.plan_tier ?? null;
         show = {
           progress: !!p.show_progress,
+          pending: !!p.show_pending_steps,
           website: !!p.show_website,
           analytics: !!p.show_analytics,
         };
@@ -133,16 +113,23 @@ export default async function DashboardPage({
 
   // A self-serve signup has no CRM project behind it and nobody to decide what
   // they are shown, so they get everything they signed up for.
-  if (planTier === null) show = { progress: false, website: true, analytics: true };
+  if (planTier === null) show = { progress: false, pending: false, website: true, analytics: true };
 
   // The visibility toggles say what a *client* is shown. Applied to the agency
   // account they hid its own work from it: signing in here gave an empty page
   // and no way to reach any review, despite the account being allowed to read
   // every one of them.
-  if (viewerIsAgency) show = { progress: true, website: true, analytics: true };
+  if (viewerIsAgency) show = { progress: true, pending: true, website: true, analytics: true };
+
+  /* The toggle was read out of the project and then never used, so a client
+     saw every unstarted step whatever the CRM said. Drop them here, once, so
+     both placements of the list below get the same answer. */
+  const visibleSteps = show.pending
+    ? projectSteps
+    : projectSteps.filter((s) => s.status !== "pending");
 
   const showWebsite = show.website && !!reviews && reviews.length > 0;
-  const showProgress = show.progress && projectSteps.length > 0;
+  const showProgress = show.progress && visibleSteps.length > 0;
   const showAnalytics = show.analytics && !!site;
   const modules = [showWebsite, showProgress, showAnalytics].filter(Boolean).length;
 
@@ -150,9 +137,7 @@ export default async function DashboardPage({
   // so the layout only splits once there is something to put on both sides.
   const sideColumn = showProgress && (showWebsite || showAnalytics);
 
-  const realVisits = sessions.filter((v) => !v.is_bot).length;
-  const botHits = sessions.filter((v) => v.is_bot).length;
-  const hasTraffic = sessions.length > 0;
+  const hasTraffic = sessionCount > 0;
 
   return (
     <main className="min-h-screen bg-sand">
@@ -260,16 +245,7 @@ export default async function DashboardPage({
                     </section>
                   ) : null}
 
-                  {showAnalytics && hasTraffic ? (
-                    <>
-                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                        <StatTile label="Sessions" value={sessions.length} />
-                        <StatTile label="Real visitors" value={realVisits} tone="good" />
-                        <StatTile label="Bots filtered" value={botHits} tone="muted" />
-                      </div>
-                      <SessionChart siteId={site!.id} initialSessions={chartInitialSessions} />
-                    </>
-                  ) : null}
+                  {showAnalytics && hasTraffic ? <SiteAnalytics siteId={site!.id} /> : null}
 
                   {showAnalytics && !hasTraffic ? (
                     <section className="rounded-lg border border-charcoal-text/10 bg-white p-5">
@@ -285,7 +261,7 @@ export default async function DashboardPage({
 
                   {/* Progress rides in the main column when there is no side */}
                   {showProgress && !sideColumn ? (
-                    <ProjectProgress steps={projectSteps} />
+                    <ProjectProgress steps={visibleSteps} showBar={show.pending} />
                   ) : null}
 
                   {selfInstall && site ? (
@@ -304,7 +280,7 @@ export default async function DashboardPage({
 
                 {sideColumn ? (
                   <div className="h-full space-y-6">
-                    <ProjectProgress steps={projectSteps} />
+                    <ProjectProgress steps={visibleSteps} showBar={show.pending} />
                   </div>
                 ) : null}
               </div>
