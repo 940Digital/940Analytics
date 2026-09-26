@@ -97,7 +97,7 @@ export default async function DashboardPage({
     if (website) {
       const { data: project } = await supabase
         .from("crm_projects")
-        .select("id, plan_tier, show_progress, show_website, show_analytics")
+        .select("id, plan_tier, show_progress, show_website, show_analytics, show_pending_steps")
         .eq("website_id", website.id)
         .eq("is_cancelled", false)
         .maybeSingle();
