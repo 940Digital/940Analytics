@@ -31,6 +31,11 @@ const ANNOTATOR = `
 
   var ORIGIN = window.location.origin;
   var selected = null;
+  /* 'markup' is the working state. 'preview' strips every trace of the tool
+     off the page so it can be read the way a visitor will meet it. Neither
+     one lets a click through: this is a frozen copy, and following a link
+     would take the frame out to the asset route. */
+  var view = 'markup';
 
   /* ---- number every element, in document order ---------------------- */
   var all = document.body ? document.body.querySelectorAll('*') : [];
@@ -99,7 +104,10 @@ const ANNOTATOR = `
   css.textContent =
     '[data-rv-hot]{outline:2px solid #3194E0!important;outline-offset:1px;cursor:crosshair}' +
     /* nothing on the page is pressable here, so nothing should look it */
-    'a,button{cursor:crosshair!important}' +
+    'html[data-rv-view="markup"] a,html[data-rv-view="markup"] button' +
+      '{cursor:crosshair!important}' +
+    /* the badges are part of the tool, so they go with it */
+    'html[data-rv-view="preview"] #rv-layer{display:none}' +
     '[data-rv-sel]{outline:2px solid #3194E0!important;outline-offset:1px;' +
       'box-shadow:0 0 0 4px rgba(49,148,224,.28)!important}' +
     '#rv-layer{position:fixed;inset:0;pointer-events:none;z-index:2147483000}' +
@@ -119,6 +127,7 @@ const ANNOTATOR = `
   /* ---- hover ---------------------------------------------------------- */
   var hot = null;
   document.addEventListener('mouseover', function (e) {
+    if (view !== 'markup') { if (hot) { hot.removeAttribute('data-rv-hot'); hot = null; } return; }
     var n = nearest(e.target);
     if (n === hot) return;
     if (hot) hot.removeAttribute('data-rv-hot');
@@ -137,6 +146,9 @@ const ANNOTATOR = `
        route and out of the review entirely. */
     var link = e.target.closest ? e.target.closest('a[href]') : null;
     if (link) e.preventDefault();
+
+    /* reading, not working: swallow the click and leave the page alone */
+    if (view !== 'markup') return;
 
     var n = nearest(e.target);
     if (!n) return;
@@ -201,12 +213,22 @@ const ANNOTATOR = `
   window.addEventListener('message', function (e) {
     if (e.origin !== ORIGIN || !e.data) return;
     if (e.data.type === 'rv:marks') { marks = e.data.marks || []; redraw(); }
+    if (e.data.type === 'rv:view') {
+      view = e.data.view === 'preview' ? 'preview' : 'markup';
+      if (view !== 'markup') {
+        if (hot) { hot.removeAttribute('data-rv-hot'); hot = null; }
+        select(null);
+      }
+      document.documentElement.setAttribute('data-rv-view', view);
+    }
     if (e.data.type === 'rv:select') { select(e.data.anchor); }
     if (e.data.type === 'rv:scrollTo') {
       var el = document.querySelector('[data-rv-i="' + e.data.anchor + '"]');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
+
+  document.documentElement.setAttribute('data-rv-view', view);
 
   post({ type: 'rv:ready', count: all.length });
 })();

@@ -86,6 +86,7 @@ export function ReviewClient({
   const [pending, startTransition] = useTransition();
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [view, setView] = useState<"markup" | "preview">("markup");
 
   const pageThreads = useMemo(
     () => threads.filter((t) => t.page_id === activePageId),
@@ -99,6 +100,13 @@ export function ReviewClient({
     pageThreads.forEach((t, i) => m.set(t.id, i + 1));
     return m;
   }, [pageThreads]);
+
+  const sendView = useCallback((next: "markup" | "preview") => {
+    frame.current?.contentWindow?.postMessage(
+      { type: "rv:view", view: next },
+      window.location.origin
+    );
+  }, []);
 
   const sendMarks = useCallback(() => {
     frame.current?.contentWindow?.postMessage(
@@ -120,7 +128,10 @@ export function ReviewClient({
       if (e.origin !== window.location.origin || !e.data) return;
       const d = e.data as Record<string, string>;
 
-      if (d.type === "rv:ready") sendMarks();
+      if (d.type === "rv:ready") {
+        sendMarks();
+        sendView(view);
+      }
 
       if (d.type === "rv:select") {
         setSelection({ anchor: d.anchor, label: d.label, text: d.text, tag: d.tag });
@@ -143,7 +154,12 @@ export function ReviewClient({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [pages, reviewId, router, sendMarks]);
+  }, [pages, reviewId, router, sendMarks, sendView, view]);
+
+  useEffect(() => {
+    sendView(view);
+    if (view !== "markup") setSelection(null);
+  }, [view, sendView]);
 
   useEffect(() => {
     sendMarks();
@@ -282,6 +298,23 @@ export function ReviewClient({
             Dashboard
           </Link>
         </div>
+        <div className="flex shrink-0 items-center rounded-md bg-white/10 p-0.5">
+          {([
+            ["markup", "Mark up"],
+            ["preview", "Preview"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setView(value)}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+                view === value ? "bg-sand text-charcoal-dark" : "text-grey-light hover:text-sand"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <nav className="flex flex-wrap items-center gap-1">
           {pages.map((p) => {
             const count = threads.filter((t) => t.page_id === p.id).length;
@@ -342,20 +375,36 @@ export function ReviewClient({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!selection ? (
               <div className="border-b border-white/10 px-4 py-3">
-                <p className="text-sm font-medium leading-relaxed text-sand">
-                  Click anything on the page to leave a note or rewrite it.
-                </p>
-                <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
-                  Links and buttons leave a note instead of opening, so you can
-                  comment on those too. Use the page names along the top to move
-                  between pages.
-                </p>
-                <button
-                  onClick={startGeneralNote}
-                  className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
-                >
-                  Add a note about the whole page
-                </button>
+                {view === "markup" ? (
+                  <>
+                    <p className="text-sm font-medium leading-relaxed text-sand">
+                      Click anything on the page to leave a note or rewrite it.
+                    </p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
+                      Links and buttons leave a note instead of opening, so you can
+                      comment on those too. Use the page names along the top to move
+                      between pages.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium leading-relaxed text-sand">
+                      Reading it the way a visitor will.
+                    </p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
+                      Scroll and take it in. Nothing is highlighted and nothing is
+                      marked. Switch back to Mark up when you want to say something.
+                    </p>
+                  </>
+                )}
+                {view === "markup" ? (
+                  <button
+                    onClick={startGeneralNote}
+                    className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
+                  >
+                    Add a note about the whole page
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
