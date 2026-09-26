@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { buildFrameHtml } from "@/lib/review/snapshot";
+import { buildFrameHtml, frameCsp, frameModeFrom } from "@/lib/review/snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * without a grant on this review simply gets no row back.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: { id: string; pageId: string } }
 ) {
   const supabase = createClient();
@@ -28,9 +28,16 @@ export async function GET(
 
   if (!page) return new Response("Not found.", { status: 404 });
 
-  return new Response(buildFrameHtml(page.html, `/review/${params.id}/asset/`), {
+  const mode = frameModeFrom(new URL(request.url).searchParams.get("mode"));
+
+  return new Response(buildFrameHtml(page.html, `/review/${params.id}/asset/`, mode), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
+      /* In preview the snapshot's own scripts run, so this header is the only
+         thing standing between a look at the site and a real lead landing in
+         the client's inbox. It matters just as much in notes mode, where a
+         stray inline handler could still try to phone home. */
+      "Content-Security-Policy": frameCsp(mode),
       /* a snapshot is immutable for its lifetime, but it is also private */
       "Cache-Control": "private, no-store",
       "X-Frame-Options": "SAMEORIGIN",

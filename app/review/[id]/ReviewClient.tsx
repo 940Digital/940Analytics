@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { pageForPath } from "@/lib/review/pages";
 import {
   addThread,
   addMessage,
@@ -37,6 +38,8 @@ export type Thread = {
 export type PageRow = { id: string; path: string; title: string | null; sort: number };
 
 type Selection = { anchor: string; label: string; text: string; tag: string };
+
+
 
 const STATUS_LABEL: Record<string, string> = {
   open: "Open",
@@ -86,7 +89,13 @@ export function ReviewClient({
   const [pending, startTransition] = useTransition();
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [view, setView] = useState<"markup" | "preview">("markup");
+  /* "notes" is the working mode, "preview" lets the site run. The document
+     served into the frame differs between them, so switching reloads it. */
+  const [view, setView] = useState<"notes" | "preview">("notes");
+  const [externHref, setExternHref] = useState<string | null>(null);
+  /* Survives the reload a mode switch causes, so toggling to check something
+     does not lose the reader's place. */
+  const scrollY = useRef(0);
   /* A real narrow viewport, not a scaled picture of one: the frame is actually
      390px wide, so the site's own media queries fire exactly as they will on
      the phone. 390 is what an iPhone 13 through 16 reports. */
@@ -105,7 +114,7 @@ export function ReviewClient({
     return m;
   }, [pageThreads]);
 
-  const sendView = useCallback((next: "markup" | "preview") => {
+  const sendView = useCallback((next: "notes" | "preview") => {
     frame.current?.contentWindow?.postMessage(
       { type: "rv:view", view: next },
       window.location.origin
@@ -135,6 +144,35 @@ export function ReviewClient({
       if (d.type === "rv:ready") {
         sendMarks();
         sendView(view);
+        if (scrollY.current > 0) {
+          frame.current?.contentWindow?.postMessage(
+            { type: "rv:scrollY", y: scrollY.current },
+            window.location.origin
+          );
+        }
+      }
+
+      if (d.type === "rv:scroll") {
+        scrollY.current = Number(d.y) || 0;
+      }
+
+      /* A link inside the snapshot: the frame deliberately does not follow it,
+         because the asset route would serve raw HTML with no annotator and no
+         way back. Switching the review's page is the same move for the reader
+         and keeps the tool around it. */
+      if (d.type === "rv:navigate") {
+        const target = pageForPath(pages, String(d.path || ""));
+        if (!target) {
+          setExternHref(String(d.href || d.path || ""));
+        } else if (target.id !== activePageId) {
+          scrollY.current = 0;
+          setExternHref(null);
+          router.push(`/review/${reviewId}?page=${target.id}`);
+        }
+      }
+
+      if (d.type === "rv:extern") {
+        setExternHref(String(d.href || ""));
       }
 
       if (d.type === "rv:select") {
@@ -158,11 +196,12 @@ export function ReviewClient({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [pages, reviewId, router, sendMarks, sendView, view]);
+  }, [pages, reviewId, router, sendMarks, sendView, view, activePageId]);
 
   useEffect(() => {
     sendView(view);
-    if (view !== "markup") setSelection(null);
+    if (view !== "notes") setSelection(null);
+    setExternHref(null);
   }, [view, sendView]);
 
   useEffect(() => {
@@ -304,7 +343,7 @@ export function ReviewClient({
         </div>
         <div className="flex shrink-0 items-center rounded-md bg-white/10 p-0.5">
           {([
-            ["markup", "Mark up"],
+            ["notes", "Notes"],
             ["preview", "Preview"],
           ] as const).map(([value, label]) => (
             <button
@@ -377,8 +416,8 @@ export function ReviewClient({
         >
           <iframe
             ref={frame}
-            key={activePageId}
-            src={`/review/${reviewId}/frame/${activePageId}`}
+            key={`${activePageId}-${view}`}
+            src={`/review/${reviewId}/frame/${activePageId}?mode=${view}`}
             className={
               width === "phone"
                 ? "h-full w-[390px] shrink-0 rounded-[1.75rem] border-0 bg-white shadow-2xl ring-1 ring-white/15"
@@ -406,7 +445,7 @@ export function ReviewClient({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {!selection ? (
               <div className="border-b border-white/10 px-4 py-3">
-                {view === "markup" ? (
+                {view === "notes" ? (
                   <>
                     <p className="text-sm font-medium leading-relaxed text-sand">
                       Click anything on the page to leave a note or rewrite it.
@@ -423,12 +462,22 @@ export function ReviewClient({
                       Reading it the way a visitor will.
                     </p>
                     <p className="mt-1.5 text-sm leading-relaxed text-grey-light">
-                      Scroll and take it in. Nothing is highlighted and nothing is
-                      marked. Switch back to Mark up when you want to say something.
+                      The site works here: menus, buttons and links all behave, and
+                      links between these pages move the review along with them.
+                      Forms will not send, because this is still a copy. Nothing is
+                      highlighted and nothing is marked. Switch back to Notes when
+                      you want to say something.
                     </p>
+                    {externHref ? (
+                      <p className="mt-2 rounded border border-white/15 bg-white/5 px-2.5 py-2 text-xs leading-relaxed text-grey-light">
+                        That link goes to{" "}
+                        <span className="break-all font-medium text-sand">{externHref}</span>, which
+                        is not part of this snapshot, so it stays put.
+                      </p>
+                    ) : null}
                   </>
                 )}
-                {view === "markup" ? (
+                {view === "notes" ? (
                   <button
                     onClick={startGeneralNote}
                     className="mt-3 w-full rounded border border-white/15 px-3 py-1.5 text-xs font-medium text-grey-light transition hover:bg-white/10 hover:text-sand"
