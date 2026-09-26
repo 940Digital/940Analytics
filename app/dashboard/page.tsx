@@ -135,6 +135,12 @@ export default async function DashboardPage({
   // they are shown, so they get everything they signed up for.
   if (planTier === null) show = { progress: false, website: true, analytics: true };
 
+  // The visibility toggles say what a *client* is shown. Applied to the agency
+  // account they hid its own work from it: signing in here gave an empty page
+  // and no way to reach any review, despite the account being allowed to read
+  // every one of them.
+  if (viewerIsAgency) show = { progress: true, website: true, analytics: true };
+
   const showWebsite = show.website && !!reviews && reviews.length > 0;
   const showProgress = show.progress && projectSteps.length > 0;
   const showAnalytics = show.analytics && !!site;
@@ -214,11 +220,12 @@ export default async function DashboardPage({
                   {showWebsite ? (
                     <section className="rounded-lg border border-blue-accent/30 bg-blue-accent/[0.06] p-5">
                       <h2 className="font-display text-sm font-bold uppercase tracking-wide text-grey-muted">
-                        Your website
+                        {viewerIsAgency ? "Every review" : "Your website"}
                       </h2>
                       <p className="mt-2 max-w-prose text-sm text-grey-muted">
-                        Read the pages as they stand and mark up anything you want changed.
-                        Click any words to leave a note or rewrite them.
+                        {viewerIsAgency
+                          ? "Every client review, whoever it belongs to. Open one to read the notes on it."
+                          : "Read the pages as they stand and mark up anything you want changed. Click any words to leave a note or rewrite them."}
                       </p>
                       <div className="mt-4 space-y-2">
                         {reviews!.map((r) => (
