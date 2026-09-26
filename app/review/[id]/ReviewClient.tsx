@@ -87,6 +87,10 @@ export function ReviewClient({
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [view, setView] = useState<"markup" | "preview">("markup");
+  /* A real narrow viewport, not a scaled picture of one: the frame is actually
+     390px wide, so the site's own media queries fire exactly as they will on
+     the phone. 390 is what an iPhone 13 through 16 reports. */
+  const [width, setWidth] = useState<"full" | "phone">("full");
 
   const pageThreads = useMemo(
     () => threads.filter((t) => t.page_id === activePageId),
@@ -315,6 +319,23 @@ export function ReviewClient({
           ))}
         </div>
 
+        <div className="flex shrink-0 items-center rounded-md bg-white/10 p-0.5">
+          {([
+            ["full", "Desktop"],
+            ["phone", "Phone"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setWidth(value)}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition ${
+                width === value ? "bg-sand text-charcoal-dark" : "text-grey-light hover:text-sand"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <nav className="flex flex-wrap items-center gap-1">
           {pages.map((p) => {
             const count = threads.filter((t) => t.page_id === p.id).length;
@@ -347,12 +368,22 @@ export function ReviewClient({
 
       <div className="flex min-h-0 flex-1">
         {/* ---- the mirror ------------------------------------------- */}
-        <div className="min-w-0 flex-1 bg-white">
+        <div
+          className={`min-w-0 flex-1 ${
+            width === "phone"
+              ? "flex justify-center overflow-y-auto bg-charcoal-dark py-6"
+              : "bg-white"
+          }`}
+        >
           <iframe
             ref={frame}
             key={activePageId}
             src={`/review/${reviewId}/frame/${activePageId}`}
-            className="h-full w-full border-0"
+            className={
+              width === "phone"
+                ? "h-full w-[390px] shrink-0 rounded-[1.75rem] border-0 bg-white shadow-2xl ring-1 ring-white/15"
+                : "h-full w-full border-0"
+            }
             title="Website preview"
             onLoad={sendMarks}
           />
