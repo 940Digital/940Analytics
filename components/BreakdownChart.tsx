@@ -104,11 +104,13 @@ export function BreakdownChart({ data }: { data: SessionBreakdownDay[] }) {
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
               >
+                {/* One string, not seven children. React separates adjacent
+                    text nodes with comment markers in HTML, but the parser
+                    coalesces them inside SVG, so a server render of this chart
+                    with data in hand fails to hydrate: React looks for seven
+                    text nodes and finds one. */}
                 <title>
-                  {d.label}
-                  {"\n"}Followed through: {d.followedThrough}
-                  {"\n"}Bounced: {d.bounced}
-                  {"\n"}Browsed: {d.other}
+                  {`${d.label}\nFollowed through: ${d.followedThrough}\nBounced: ${d.bounced}\nBrowsed: ${d.other}`}
                 </title>
               </rect>
               {/* At two years there are 24 buckets and every tick still fits, but a

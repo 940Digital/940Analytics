@@ -38,6 +38,14 @@ export async function GET(
     headers: {
       "Content-Type": asset.content_type || contentTypeFor(asset.path),
       "Cache-Control": "private, max-age=3600",
+      /* A snapshot can carry .svg and .html, and both run script when a browser
+         opens them directly rather than inside the frame, on this origin, where
+         the reader's session lives. The frame route sets a policy; this one
+         served whatever was stored with none at all. Assets are data: no
+         script, no embedding, and nothing that can call home. */
+      "Content-Security-Policy":
+        "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; sandbox",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

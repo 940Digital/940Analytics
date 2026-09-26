@@ -77,12 +77,19 @@ export async function addThread(formData: FormData) {
   if (error || !thread) return { error: error?.message || "Could not save that." };
 
   if (body) {
-    await supabase.from("rv_messages").insert({
+    const { error: msgError } = await supabase.from("rv_messages").insert({
       thread_id: thread.id,
       body,
       created_by: user.id,
       author_name: name,
     });
+    /* The thread is already saved, so this is not a failure to report as one:
+       say the words did not stick and leave the mark on the page, rather than
+       silently dropping what they wrote and showing an empty note. */
+    if (msgError) {
+      revalidatePath(`/review/${reviewId}`);
+      return { error: "Saved the mark, but the note did not send. Add it again on the thread." };
+    }
   }
 
   revalidatePath(`/review/${reviewId}`);

@@ -105,14 +105,33 @@ function cleanDomain(input: string) {
 // > Redirect URLs allowlist or Supabase silently falls back to Site URL
 // again (that allowlist isn't reachable through any available API/DB
 // tool, so this needs to be added by hand once, in the Supabase dashboard).
+/* Hosts this app is actually served from. The fallback below reads the request
+   headers, and a Host header is whatever the caller says it is: without this
+   list, a request with a forged Host would put an attacker's domain into the
+   confirmation and password-reset links we ask Supabase to send. Supabase's own
+   redirect allowlist would refuse it, but a link is not the place to find that
+   out, and the allowlist is not visible from here. */
+const ALLOWED_HOSTS = new Set([
+  "940-analytics.vercel.app",
+  "localhost:3300",
+  "localhost:3000",
+]);
+
 function getSiteUrl() {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+
   const h = headers();
-  const origin = h.get("origin");
-  if (origin) return origin;
   const host = h.get("host");
-  const proto = h.get("x-forwarded-proto") || "https";
-  return host ? `${proto}://${host}` : "http://localhost:3300";
+  if (host && ALLOWED_HOSTS.has(host)) {
+    const proto = host.startsWith("localhost") ? "http" : "https";
+    return `${proto}://${host}`;
+  }
+
+  /* A Vercel preview deployment is ours and its host changes every push, so it
+     cannot be listed; trust the platform's own value rather than the header. */
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+
+  return "https://940-analytics.vercel.app";
 }
 
 export async function signUp(formData: FormData) {
