@@ -29,6 +29,18 @@ export default async function DashboardPage({
 
   const site = sites?.[0] ?? null;
 
+  /* A browser holds one login per site, so signing in somewhere else quietly
+     changes who every other tab is. Say who that is rather than letting
+     someone find out from a note signed with the wrong name. */
+  const { data: whoami } = await supabase
+    .from("accounts")
+    .select("display_name, role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const viewerName = whoami?.display_name || user.email?.split("@")[0] || "Someone";
+  const viewerIsAgency = whoami?.role === "master";
+
   // Row level security already limits this to reviews the viewer was granted,
   // so there is no account_id filter to write here. A client sees theirs; the
   // master account sees every one.
@@ -141,9 +153,23 @@ export default async function DashboardPage({
       <header className="border-b border-charcoal-text/10 bg-white/60">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Logo dark size={20} />
-          <form action={logOut}>
-            <button className="text-sm text-grey-muted hover:text-charcoal-text">Log out</button>
-          </form>
+          <div className="flex items-center gap-3">
+            <span
+              title={user.email ?? ""}
+              className={`rounded px-2 py-1 text-xs font-medium ${
+                viewerIsAgency
+                  ? "bg-charcoal-text/10 text-charcoal-text"
+                  : "bg-blue-accent/10 text-blue-accent"
+              }`}
+            >
+              {viewerName}
+            </span>
+            <form action={logOut}>
+              <button className="text-sm text-grey-muted hover:text-charcoal-text">
+                Log out
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 
