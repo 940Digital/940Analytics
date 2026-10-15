@@ -1,5 +1,6 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { cookies, headers } from "next/headers";
+import { sharedCookieDomain } from "@/lib/sharedLogin";
 
 export function createClient() {
   const cookieStore = cookies();
@@ -8,20 +9,14 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: { domain: sharedCookieDomain(headers().get("host")) },
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set({ name, value, ...options });
-          } catch {
-            // called from a Server Component; middleware refreshes the session instead
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: "", ...options });
+            for (const { name, value, options } of cookiesToSet) cookieStore.set(name, value, options);
           } catch {
             // called from a Server Component; middleware refreshes the session instead
           }

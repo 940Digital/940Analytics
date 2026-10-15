@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { AuthError } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { crmHomeUrl } from "@/lib/sharedLogin";
 
 // Supabase's raw auth error messages/codes aren't something to show someone
 // signing up for the first time. This maps every failure we've actually seen
@@ -112,6 +113,7 @@ function cleanDomain(input: string) {
    redirect allowlist would refuse it, but a link is not the place to find that
    out, and the allowlist is not visible from here. */
 const ALLOWED_HOSTS = new Set([
+  "940analytics.com",
   "940-analytics.vercel.app",
   "localhost:3300",
   "localhost:3000",
@@ -131,7 +133,7 @@ function getSiteUrl() {
      cannot be listed; trust the platform's own value rather than the header. */
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
 
-  return "https://940-analytics.vercel.app";
+  return "https://940analytics.com";
 }
 
 export async function signUp(formData: FormData) {
@@ -213,6 +215,18 @@ export async function logIn(formData: FormData) {
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     redirect("/login?error=" + encodeURIComponent(friendlyAuthError(err, "login")) + carry);
+  }
+
+  /* The master account lives in the CRM. A review invite or other explicit
+     destination wins, otherwise send the agency there. The session cookie is
+     shared on 940analytics.com hosts, so it arrives already signed in; on other
+     hosts they sign in once more. */
+  if (!next) {
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      const { data: account } = await supabase.from("accounts").select("role").eq("id", userData.user.id).maybeSingle();
+      if (account?.role === "master") redirect(crmHomeUrl(headers().get("host")));
+    }
   }
 
   redirect(next || "/dashboard");
