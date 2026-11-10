@@ -28,6 +28,7 @@ function fmtTime(iso: string): string {
 
 function leadLabel(target: string | null): string {
   if (target === "phone_click") return "Phone tap";
+  if (target === "sms_click") return "Text tap";
   if (target === "email_click") return "Email click";
   if (!target || target === "form") return "Form submission";
   return "Form: " + target;
