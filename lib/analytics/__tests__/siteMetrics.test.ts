@@ -14,7 +14,7 @@ import { computeSiteMetrics, metricTiles, rangeBuckets, type MetricEvent, type M
  *    change it, copy it to the other repo and update SITE_METRICS_SHA256 in
  *    both tests.
  */
-const SITE_METRICS_SHA256 = "48dc34e13e8a26aad8a3d96157b419592a315cd9a9d2295cf61c3c8f91c9cec6";
+const SITE_METRICS_SHA256 = "c4ec1f9337dc62d42d8e45a21666b4bbd039b69d11a324077d26c986988e20e4";
 
 const NOW = new Date("2026-11-13T18:00:00Z");
 const at = (daysAgo: number, time = "15:00:00") => {
@@ -51,6 +51,10 @@ const SESSIONS: MetricSession[] = [
   person("s9", { duration_seconds: 20, city: "Ashburn", region: "VA" }), // data centre town, but sent a form: a person
   person("s10", { is_bounce: true, duration_seconds: 1, user_agent: "meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)" }),
   person("s11", { is_bounce: true, duration_seconds: null }),
+  // Seen on Roofing Reformation: Meta's preview renderer holds /contact ~31 s and fires form_start.
+  person("s12", { is_bounce: true, duration_seconds: 31, city: "Gallatin", region: "TN", channel: "Social", landing_page: "/contact" }),
+  person("s13", { duration_seconds: 99, user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Claude/5.1231.2 Chrome/156.0.8078.75 Safari/537.36" }),
+  person("s14", { is_bounce: true, duration_seconds: 120, city: "Ashburn", region: "VA", channel: "Campaign" }), // stayed two minutes: a person
   person("b1", { is_bot: true, duration_seconds: 12, user_agent: "Mozilla/5.0 HeadlessChrome/131.0" }), // a scripted form test
   person("old", { session_start: at(45) }), // outside the window
 ];
@@ -74,6 +78,7 @@ const EVENTS: MetricEvent[] = [
   ev("b1", "lead_submit", "inspection-request"),
   ev("gone", "lead_submit", "phone_click"), // its session row never arrived
   ev("s5", "social_click", "facebook"),
+  ev("s12", "form_start", "inspection-request"),
 ];
 
 const metrics = () => computeSiteMetrics(SESSIONS, EVENTS, rangeBuckets("month", NOW));
@@ -81,24 +86,32 @@ const metrics = () => computeSiteMetrics(SESSIONS, EVENTS, rangeBuckets("month",
 describe("site metrics", () => {
   it("gives the golden figures for the fixture", () => {
     const t = metrics().totals;
-    expect(t.visitors).toBe(7);
-    expect(t.bots).toBe(5);
+    expect(t.visitors).toBe(8);
+    expect(t.bots).toBe(7);
     expect(t.botsFlagged).toBe(1);
-    expect(t.botsLikely).toBe(4);
-    expect(t.bounces).toBe(2);
+    expect(t.botsLikely).toBe(6);
+    expect(t.bounces).toBe(3);
     expect(t.leads).toBe(3);
     expect(t.leadsByKind).toEqual({ form: 2, call: 1, text: 1, email: 0 });
     expect(t.formStarts).toBe(3);
     expect(t.formsSent).toBe(2);
     expect(Math.round(t.formCompletion!)).toBe(67);
-    expect(t.durationSamples).toBe(6);
-    expect(Math.round(t.avgDuration)).toBe(337);
+    expect(t.durationSamples).toBe(7);
+    expect(Math.round(t.avgDuration)).toBe(306);
     expect(t.social).toBe(1);
   });
 
   it("explains every bot it removes", () => {
     const reasons = Object.fromEntries(metrics().rows.bots.map((s) => [s.id, s.bot_reason]));
-    expect(reasons).toEqual({ s6: "data center", s7: "same-second burst", s8: "same-second burst", s10: "user agent", b1: "flagged" });
+    expect(reasons).toEqual({
+      s6: "data center",
+      s7: "same-second burst",
+      s8: "same-second burst",
+      s10: "user agent",
+      s12: "data center",
+      s13: "user agent",
+      b1: "flagged",
+    });
   });
 
   it("never counts a bot's lead or an orphan event", () => {
@@ -110,18 +123,18 @@ describe("site metrics", () => {
   it("splits every visitor into exactly one outcome", () => {
     const m = metrics();
     const sum = m.outcomes.reduce((a, d) => ({ f: a.f + d.followedThrough, b: a.b + d.bounced, o: a.o + d.other }), { f: 0, b: 0, o: 0 });
-    expect(sum).toEqual({ f: 3, b: 2, o: 2 });
+    expect(sum).toEqual({ f: 3, b: 3, o: 2 });
     expect(sum.f + sum.b + sum.o).toBe(m.totals.visitors);
     expect(m.series.leads.reduce((a, n) => a + n, 0)).toBe(m.totals.leads);
   });
 
   it("words the tiles once", () => {
     expect(metricTiles(metrics()).map((x) => [x.label, x.value])).toEqual([
-      ["Visitors", "7"],
-      ["Bots filtered out", "5"],
-      ["Avg. time on site", "5:37"],
-      ["Bounces", "2 (29%)"],
-      ["Lead follow-through", "3 (43%)"],
+      ["Visitors", "8"],
+      ["Bots filtered out", "7"],
+      ["Avg. time on site", "5:06"],
+      ["Bounces", "3 (38%)"],
+      ["Lead follow-through", "3 (38%)"],
       ["Forms started", "3"],
     ]);
   });

@@ -12,7 +12,7 @@
  * copy that is not made to the other fails that repo's test run.
  */
 
-export const SITE_METRICS_VERSION = 1;
+export const SITE_METRICS_VERSION = 2;
 
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
@@ -98,11 +98,12 @@ export const METRIC_HELP = {
 
 /**
  * Fetchers the collector's user agent list did not know about when older rows
- * were stored. Matched again here so history is reclassified without touching
- * the stored rows.
+ * were stored, plus the Claude desktop app's built-in browser (our own checks
+ * of a client site). Matched again here so history is reclassified without
+ * touching the stored rows.
  */
 export const EXTRA_BOT_UA =
-  /meta-externalagent|meta-externalfetcher|facebookcatalog|facebot|google-inspectiontool|googleother|google-extended|storebot-google|chrome-lighthouse|gtmetrix|pingdom|uptimerobot|vercel-screenshot|vercelbot|headless|lighthouse/i;
+  /meta-externalagent|meta-externalfetcher|facebookcatalog|facebot|google-inspectiontool|googleother|google-extended|storebot-google|chrome-lighthouse|gtmetrix|pingdom|uptimerobot|vercel-screenshot|vercelbot|headless|lighthouse|\bclaude\/\d/i;
 
 /**
  * Towns that are, for analytics purposes, hyperscale data centres (Meta, AWS,
@@ -117,6 +118,7 @@ export const DATA_CENTER_CITIES = new Set(
     "papillion", // Meta, NE
     "los lunas", // Meta, NM
     "eagle mountain", // Meta, UT
+    "gallatin", // Meta, TN
     "henrico", // Meta, VA
     "boardman", // AWS, OR
     "ashburn", // AWS and others, VA
@@ -131,14 +133,17 @@ export const DATA_CENTER_CITIES = new Set(
   ].map((c) => c.toLowerCase())
 );
 
-/** A visit that did nothing: one page, no lead, and gone within this many seconds. */
-const NO_INTERACTION_SECONDS = 30;
+/**
+ * A visit that did nothing: one page, no lead, and gone within this many
+ * seconds. Meta's link preview renderers hold a page for 27 to 32 seconds
+ * (seen on Roofing Reformation, Nov 2026), so the cut sits above that.
+ */
+const NO_INTERACTION_SECONDS = 45;
+
+/** Idle visits to the same page this close together came from one link being fetched by several servers. */
+const BURST_SECONDS = 2;
 
 export type LikelyBotReason = "user agent" | "data center" | "same-second burst";
-
-function secondKey(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 19);
-}
 
 /**
  * Sessions the collector let through but which behave like crawlers or link
@@ -150,15 +155,19 @@ export function findLikelyBots(sessions: MetricSession[], leadSessionIds: Set<st
   const idle = (s: MetricSession) =>
     !leadSessionIds.has(s.id) && s.is_bounce && (s.duration_seconds ?? 0) < NO_INTERACTION_SECONDS;
 
-  // Two or more idle visits that start in the same second on the same landing
-  // page: one link fetched by several preview servers at once (Meta does this
-  // whenever a link is posted or sent in Messenger).
-  const bySecond = new Map<string, MetricSession[]>();
+  // Two or more idle visits to the same landing page within a couple of
+  // seconds: one link fetched by several preview servers at once (Meta does
+  // this whenever a link is posted or sent in Messenger).
+  const idleByPage = new Map<string, number[]>();
   for (const s of sessions) {
     if (s.is_bot || !idle(s)) continue;
-    const key = `${secondKey(s.session_start)}|${s.landing_page ?? ""}`;
-    bySecond.set(key, [...(bySecond.get(key) ?? []), s]);
+    const key = s.landing_page ?? "";
+    idleByPage.set(key, [...(idleByPage.get(key) ?? []), new Date(s.session_start).getTime()]);
   }
+  const inBurst = (s: MetricSession) => {
+    const t = new Date(s.session_start).getTime();
+    return (idleByPage.get(s.landing_page ?? "") ?? []).filter((u) => Math.abs(u - t) <= BURST_SECONDS * 1000).length > 1;
+  };
 
   for (const s of sessions) {
     if (s.is_bot || leadSessionIds.has(s.id)) continue;
@@ -166,7 +175,7 @@ export function findLikelyBots(sessions: MetricSession[], leadSessionIds: Set<st
       out.set(s.id, "user agent");
     } else if (idle(s) && DATA_CENTER_CITIES.has((s.city ?? "").trim().toLowerCase())) {
       out.set(s.id, "data center");
-    } else if (idle(s) && (bySecond.get(`${secondKey(s.session_start)}|${s.landing_page ?? ""}`)?.length ?? 0) > 1) {
+    } else if (idle(s) && inBurst(s)) {
       out.set(s.id, "same-second burst");
     }
   }
