@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ANALYTICS_RANGES, fetchSiteAnalytics } from "@/lib/analytics/query";
-import { AnalyticsRangeKey, EventRow, SessionRow, SiteAnalytics } from "@/lib/analytics/types";
+import { ANALYTICS_RANGES, fetchSiteMetrics } from "@/lib/analytics/query";
+import { AnalyticsRangeKey } from "@/lib/analytics/types";
+import { LEAD_KIND_LABEL, MetricEvent, MetricSession, MetricTile, SiteMetrics, fmtDuration, metricTiles } from "@/lib/analytics/siteMetrics";
 import { Sparkline } from "./Sparkline";
 
 type DetailStat = "visitors" | "bots" | "leads" | "social";
@@ -15,23 +16,8 @@ const STAT_DEFS: { key: DetailStat; label: string; color: string }[] = [
   { key: "social", label: "Social Clicks", color: "#A855F7" },
 ];
 
-function fmtDuration(seconds: number): string {
-  if (!seconds || !isFinite(seconds)) return "0:00";
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function leadLabel(target: string | null): string {
-  if (target === "phone_click") return "Phone tap";
-  if (target === "sms_click") return "Text tap";
-  if (target === "email_click") return "Email click";
-  if (!target || target === "form") return "Form submission";
-  return "Form: " + target;
 }
 
 /**
@@ -44,20 +30,25 @@ export function AnalyticsPanel({
   siteId,
   range,
   onRangeChange,
+  view,
 }: {
   siteId: string;
+  /* When set, only that view renders and the panel's own range and tab buttons
+     are left out, so a parent can host it as one tab among several. */
+  view?: "summary" | "details";
   /* The range lives with whoever owns the page, because the outcome charts
      sitting below this panel have to answer to the same buttons. */
   range: AnalyticsRangeKey;
   onRangeChange: (range: AnalyticsRangeKey) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [data, setData] = useState<SiteAnalytics | null>(null);
-  const [tab, setTab] = useState<"summary" | "details">("summary");
+  const [data, setData] = useState<SiteMetrics | null>(null);
+  const [tabState, setTab] = useState<"summary" | "details">("summary");
+  const tab = view ?? tabState;
   const [detailStat, setDetailStat] = useState<DetailStat>("visitors");
 
   const load = useCallback(async () => {
-    const d = await fetchSiteAnalytics(supabase, siteId, range);
+    const d = await fetchSiteMetrics(supabase, siteId, range);
     setData(d);
   }, [supabase, siteId, range]);
 
@@ -77,6 +68,7 @@ export function AnalyticsPanel({
 
   return (
     <div>
+      {view ? null : (
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1 rounded-lg bg-sand p-1">
           {ANALYTICS_RANGES.map((r) => (
@@ -105,15 +97,14 @@ export function AnalyticsPanel({
           ))}
         </div>
       </div>
+      )}
 
       {tab === "summary" ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatCard label="Visitors" value={totals.visitors.toLocaleString()} values={series.visitors} color="#3194E0" />
-            <StatCard label="Bots" value={totals.bots.toLocaleString()} values={series.bots} color="#7B7E85" />
-            <StatCard label="Avg. Time on Site" value={fmtDuration(totals.avgDuration)} />
-            <StatCard label="Bounces" value={`${totals.bounces} (${totals.bounceRate.toFixed(0)}%)`} values={series.bounces} color="#DC2626" />
-            <StatCard label="Lead Follow-Through" value={`${totals.leads} (${totals.leadRate.toFixed(0)}%)`} values={series.leads} color="#16A34A" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {metricTiles(data).map((tile) => (
+              <StatCard key={tile.key} tile={tile} values={TILE_SERIES[tile.key] ? series[TILE_SERIES[tile.key]!] : undefined} color={TILE_COLOR[tile.key]} />
+            ))}
           </div>
           <div className="mt-5">
             <h3 className="mb-2 text-xs font-medium text-grey-muted">Social clicks — {totals.social.toLocaleString()}</h3>
@@ -146,28 +137,54 @@ export function AnalyticsPanel({
               </button>
             ))}
           </div>
-          <DetailsTable stat={detailStat} raw={data.raw} />
+          <DetailsTable stat={detailStat} rows={data.rows} />
         </div>
       )}
     </div>
   );
 }
 
-function StatCard({ label, value, values, color }: { label: string; value: string; values?: number[]; color?: string }) {
+const BOT_REASON: Record<string, string> = {
+  flagged: "Known bot",
+  "user agent": "Known fetcher",
+  "data center": "Data center, no action",
+  "same-second burst": "Link preview burst",
+};
+
+const TILE_SERIES: Partial<Record<MetricTile["key"], keyof SiteMetrics["series"]>> = {
+  visitors: "visitors",
+  bots: "bots",
+  bounces: "bounces",
+  leads: "leads",
+};
+const TILE_COLOR: Partial<Record<MetricTile["key"], string>> = {
+  visitors: "#3194E0",
+  bots: "#7B7E85",
+  bounces: "#DC2626",
+  leads: "#16A34A",
+};
+
+function StatCard({ tile, values, color }: { tile: MetricTile; values?: number[]; color?: string }) {
   return (
-    <div className="rounded-xl border border-grey-light p-3">
-      <div className="text-xs text-grey-muted">{label}</div>
-      <div className="text-lg font-semibold text-charcoal-text">{value}</div>
+    <div className="rounded-xl border border-grey-light p-3" title={tile.help}>
+      <div className="flex items-center gap-1 text-xs text-grey-muted">
+        <span>{tile.label}</span>
+        <span aria-hidden className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-grey-light text-[9px] leading-none">?</span>
+        <span className="sr-only">{tile.help}</span>
+      </div>
+      <div className="text-lg font-semibold text-charcoal-text">{tile.value}</div>
+      <div className="text-[11px] text-grey-muted">{tile.sub}</div>
       {values && color && <Sparkline values={values} color={color} />}
     </div>
   );
 }
 
-function DetailsTable({ stat, raw }: { stat: DetailStat; raw: SiteAnalytics["raw"] }) {
-  const rows = raw[stat];
-
+function DetailsTable({ stat, rows: all }: { stat: DetailStat; rows: SiteMetrics["rows"] }) {
   if (stat === "visitors" || stat === "bots") {
-    const items = (rows as SessionRow[]).slice().sort((a, b) => b.session_start.localeCompare(a.session_start)).slice(0, 20);
+    const items = (all[stat] as (MetricSession & { bot_reason?: string })[])
+      .slice()
+      .sort((a, b) => b.session_start.localeCompare(a.session_start))
+      .slice(0, 20);
     if (items.length === 0) return <p className="text-xs text-grey-muted">Nothing in this range yet.</p>;
     return (
       <div className="overflow-hidden rounded-xl border border-grey-light">
@@ -175,22 +192,20 @@ function DetailsTable({ stat, raw }: { stat: DetailStat; raw: SiteAnalytics["raw
           <thead>
             <tr className="border-b border-grey-light text-grey-muted">
               <th className="px-3 py-1.5 font-medium">Time</th>
-              <th className="px-3 py-1.5 font-medium">{stat === "visitors" ? "Duration" : "User Agent"}</th>
+              <th className="px-3 py-1.5 font-medium">{stat === "visitors" ? "Duration" : "Why"}</th>
               {stat === "visitors" && <th className="px-3 py-1.5 font-medium">Bounced?</th>}
-              <th className="px-3 py-1.5 font-medium">Referrer</th>
+              <th className="px-3 py-1.5 font-medium">{stat === "visitors" ? "Referrer" : "User agent"}</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((r, i) => (
-              <tr key={i} className="border-b border-grey-light text-charcoal-text last:border-0">
+            {items.map((r) => (
+              <tr key={r.id} className="border-b border-grey-light text-charcoal-text last:border-0">
                 <td className="px-3 py-1.5">{fmtTime(r.session_start)}</td>
-                <td className="px-3 py-1.5">
-                  {stat === "visitors"
-                    ? fmtDuration(r.duration_seconds ?? 0)
-                    : (r.user_agent || "—").slice(0, 60)}
-                </td>
+                <td className="px-3 py-1.5">{stat === "visitors" ? fmtDuration(r.duration_seconds ?? 0) : BOT_REASON[r.bot_reason ?? "flagged"] ?? r.bot_reason}</td>
                 {stat === "visitors" && <td className="px-3 py-1.5">{r.is_bounce ? "Yes" : "No"}</td>}
-                <td className="px-3 py-1.5">{r.referrer || "Direct"}</td>
+                <td className="px-3 py-1.5">
+                  {stat === "visitors" ? r.referrer || "Direct" : (r.user_agent || "Unknown").slice(0, 60)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -199,7 +214,10 @@ function DetailsTable({ stat, raw }: { stat: DetailStat; raw: SiteAnalytics["raw
     );
   }
 
-  const items = (rows as EventRow[]).slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20);
+  const items = (all[stat] as (MetricEvent & { kind?: keyof typeof LEAD_KIND_LABEL })[])
+    .slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, 20);
   if (items.length === 0) return <p className="text-xs text-grey-muted">Nothing in this range yet.</p>;
   return (
     <div className="overflow-hidden rounded-xl border border-grey-light">
@@ -214,7 +232,9 @@ function DetailsTable({ stat, raw }: { stat: DetailStat; raw: SiteAnalytics["raw
           {items.map((r, i) => (
             <tr key={i} className="border-b border-grey-light text-charcoal-text last:border-0">
               <td className="px-3 py-1.5">{fmtTime(r.created_at)}</td>
-              <td className="px-3 py-1.5">{stat === "leads" ? leadLabel(r.event_target) : r.event_target}</td>
+              <td className="px-3 py-1.5">
+                {stat === "leads" && r.kind ? LEAD_KIND_LABEL[r.kind] + (r.kind === "form" && r.event_target ? `: ${r.event_target}` : "") : r.event_target}
+              </td>
             </tr>
           ))}
         </tbody>

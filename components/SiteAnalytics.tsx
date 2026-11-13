@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchSessionBreakdown } from "@/lib/analytics/query";
+import { fetchSiteMetrics } from "@/lib/analytics/query";
 import { AnalyticsRangeKey, SessionBreakdownDay } from "@/lib/analytics/types";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { BreakdownChart } from "./BreakdownChart";
@@ -30,9 +30,9 @@ export function SiteAnalytics({ siteId }: { siteId: string }) {
 
   useEffect(() => {
     let live = true;
-    fetchSessionBreakdown(supabase, siteId, range)
-      .then((series) => {
-        if (live) setBreakdown(series);
+    fetchSiteMetrics(supabase, siteId, range)
+      .then((m) => {
+        if (live) setBreakdown(m.outcomes);
       })
       .catch(() => {
         if (live) setBreakdown([]);
