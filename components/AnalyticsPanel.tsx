@@ -214,7 +214,9 @@ function DetailsTable({ stat, rows: all }: { stat: DetailStat; rows: SiteMetrics
     );
   }
 
-  const items = (all[stat] as (MetricEvent & { kind?: keyof typeof LEAD_KIND_LABEL })[])
+  // Sends from visitors the tracker could not see have no visit row, but they are leads all the same.
+  const unseen = stat === "leads" ? all.unseenSends.map((x) => ({ session_id: null, event_type: "form_submission", event_target: x.form, created_at: x.created_at, kind: "form" as const })) : [];
+  const items = ([...(all[stat] as (MetricEvent & { kind?: keyof typeof LEAD_KIND_LABEL })[]), ...unseen])
     .slice()
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 20);

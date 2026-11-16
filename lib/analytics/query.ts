@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { AnalyticsRangeKey } from "./types";
-import { METRIC_EVENT_TYPES, MetricEvent, MetricSession, SiteMetrics, computeSiteMetrics, rangeBuckets } from "./siteMetrics";
+import { METRIC_EVENT_TYPES, MetricEvent, MetricSession, MetricSubmission, SiteMetrics, computeSiteMetrics, rangeBuckets } from "./siteMetrics";
 
 export const ANALYTICS_RANGES: { key: AnalyticsRangeKey; label: string }[] = [
   { key: "week", label: "Week" },
@@ -32,7 +32,7 @@ async function fetchAllRows<T>(page: (from: number, to: number) => PromiseLike<{
 export async function fetchSiteMetrics(supabase: SupabaseClient, siteId: string, rangeKey: AnalyticsRangeKey): Promise<SiteMetrics> {
   const buckets = rangeBuckets(rangeKey);
   const since = buckets[0].start;
-  const [sessions, events] = await Promise.all([
+  const [sessions, events, wired, sends] = await Promise.all([
     fetchAllRows<MetricSession>((from, to) =>
       supabase.from("sessions").select(METRIC_SESSION_COLUMNS).eq("site_id", siteId).gte("session_start", since).order("session_start").range(from, to)
     ),
@@ -46,6 +46,17 @@ export async function fetchSiteMetrics(supabase: SupabaseClient, siteId: string,
         .order("created_at")
         .range(from, to)
     ),
+    // Whether this site's server records its own form sends (then those, not browser submits, are the form leads).
+    supabase.rpc("site_server_forms", { p_site: siteId }).then(({ data, error }) => !error && data === true),
+    fetchAllRows<MetricSubmission>((from, to) =>
+      supabase
+        .from("form_submissions")
+        .select("session_id, form, created_at")
+        .eq("site_id", siteId)
+        .gte("created_at", since)
+        .order("created_at")
+        .range(from, to)
+    ),
   ]);
-  return computeSiteMetrics(sessions, events, buckets);
+  return computeSiteMetrics(sessions, events, buckets, wired ? sends : null);
 }

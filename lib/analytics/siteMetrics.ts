@@ -12,7 +12,7 @@
  * copy that is not made to the other fails that repo's test run.
  */
 
-export const SITE_METRICS_VERSION = 2;
+export const SITE_METRICS_VERSION = 3;
 
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
@@ -38,6 +38,18 @@ export interface MetricEvent {
   session_id: string | null;
   event_type: string;
   event_target: string | null;
+  created_at: string;
+}
+
+/**
+ * A form send recorded by the site's own server after delivery succeeded
+ * (table form_submissions). It does not depend on the visitor's browser
+ * running the tracker, so it is the truth for "form sent" on a site that has
+ * it. session_id is the tracker visit the browser had, when it had one.
+ */
+export interface MetricSubmission {
+  session_id: string | null;
+  form: string;
   created_at: string;
 }
 
@@ -83,12 +95,13 @@ export const LEAD_KIND_LABEL: Record<LeadKind, string> = {
 };
 
 export const METRIC_HELP = {
-  visitors: "Visits by people in this range. Bots and likely bots are left out.",
+  visitors:
+    "Visits by people in this range. Bots and likely bots are left out. A delivered form from a visitor the tracker could not see (blocked, or Do Not Track) counts as one visit.",
   bots: "Visits from crawlers, link previews and scripts. Not counted anywhere else.",
   avgTime: "Average visit length, each visit capped at 30 minutes. Visits by bots are left out.",
   bounces: "Visits that saw one page and did nothing on it.",
   leads:
-    "Visits that ended in a sent form, a call tap, a text tap or an email click. Started forms do not count. The percentage is out of all visitors.",
+    "Visits that ended in a sent form, a call tap, a text tap or an email click. Where the site records its own sends, a form only counts once it was delivered. Started forms do not count. The percentage is out of all visitors.",
   formStarts: "Visits where someone began filling in a form, sent or not.",
 } as const;
 
@@ -238,8 +251,10 @@ export interface SiteMetrics {
   version: number;
   buckets: MetricBucket[];
   totals: {
-    /** Sessions by people (not unique people: the tracker has no login). */
+    /** Sessions by people (not unique people: the tracker has no login), plus unseenSends. */
     visitors: number;
+    /** Delivered form sends with no tracker visit behind them: each is a person the tracker could not see. */
+    unseenSends: number;
     /** is_bot from the collector plus likely bots found here. */
     bots: number;
     botsFlagged: number;
@@ -275,6 +290,8 @@ export interface SiteMetrics {
     visitors: MetricSession[];
     bots: (MetricSession & { bot_reason: LikelyBotReason | "flagged" })[];
     leads: (MetricEvent & { kind: LeadKind })[];
+    /** Delivered sends with no tracker visit behind them (counted as visitors and leads). */
+    unseenSends: MetricSubmission[];
     formStarts: MetricEvent[];
     social: MetricEvent[];
   };
@@ -282,7 +299,18 @@ export interface SiteMetrics {
 
 const pct = (a: number, b: number) => (b ? (a / b) * 100 : 0);
 
-export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: MetricEvent[], buckets: MetricBucket[]): SiteMetrics {
+/**
+ * `submissions` is null for a site whose server does not record its sends:
+ * then a form lead is the tracker's lead_submit (the browser's submit). For a
+ * site that does, pass its rows (even when empty): a form lead is then only a
+ * delivered send, and the browser's lead_submit for forms is ignored.
+ */
+export function computeSiteMetrics(
+  sessionsIn: MetricSession[],
+  eventsIn: MetricEvent[],
+  buckets: MetricBucket[],
+  submissions: MetricSubmission[] | null = null,
+): SiteMetrics {
   const inRange = (iso: string) => bucketIndex(buckets, iso) !== -1;
   const sessions = sessionsIn.filter((s) => inRange(s.session_start));
   const byId = new Map(sessions.map((s) => [s.id, s]));
@@ -292,7 +320,15 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
   // person and is left out.
   const events = eventsIn.filter((e) => e.session_id && byId.has(e.session_id));
 
-  const leadSessionsAll = new Set(events.filter((e) => leadKind(e)).map((e) => e.session_id as string));
+  const serverForms = submissions !== null;
+  const sends = (submissions ?? []).filter((x) => inRange(x.created_at));
+  const countsAsLead = (e: MetricEvent) => {
+    const kind = leadKind(e);
+    return kind !== null && !(serverForms && kind === "form");
+  };
+
+  const leadSessionsAll = new Set(events.filter(countsAsLead).map((e) => e.session_id as string));
+  for (const x of sends) if (x.session_id && byId.has(x.session_id)) leadSessionsAll.add(x.session_id);
   const likely = findLikelyBots(sessions, leadSessionsAll);
 
   const isPerson = (s: MetricSession) => !s.is_bot && !likely.has(s.id);
@@ -306,22 +342,41 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
   // Leads, one per session per kind: a visitor who taps Call twice is one call.
   const leadRows: (MetricEvent & { kind: LeadKind })[] = [];
   const seenLead = new Set<string>();
+  // On a site that records its own sends, a form lead is a delivered send (below), never the browser's submit.
   for (const e of personEvents.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    const kind = leadKind(e);
-    if (!kind) continue;
+    if (!countsAsLead(e)) continue;
+    const kind = leadKind(e) as LeadKind;
     const key = `${e.session_id}|${kind}`;
     if (seenLead.has(key)) continue;
     seenLead.add(key);
     leadRows.push({ ...e, kind });
   }
+  // Delivered sends. Linked to a person's visit: that visit's form lead. Linked
+  // to a bot's visit: our own scripted tests, left out. No visit: a person the
+  // tracker could not see, counted on its own.
+  const unseenSends: MetricSubmission[] = [];
+  for (const x of sends.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    const visit = x.session_id ? byId.get(x.session_id) : undefined;
+    if (!visit) {
+      unseenSends.push(x);
+      continue;
+    }
+    if (!personIds.has(visit.id)) continue;
+    const key = `${visit.id}|form`;
+    if (seenLead.has(key)) continue;
+    seenLead.add(key);
+    leadRows.push({ session_id: visit.id, event_type: "form_submission", event_target: x.form, created_at: x.created_at, kind: "form" });
+  }
+
   const leadSessions = new Set(leadRows.map((e) => e.session_id as string));
-  const leadsByKind: Record<LeadKind, number> = { form: 0, call: 0, text: 0, email: 0 };
+  const leadsByKind: Record<LeadKind, number> = { form: unseenSends.length, call: 0, text: 0, email: 0 };
   for (const e of leadRows) leadsByKind[e.kind] += 1;
 
   const formStartRows = personEvents.filter((e) => e.event_type === "form_start");
   const formStartSessions = new Set(formStartRows.map((e) => e.session_id as string));
   // A sent form implies a started one even when the start beacon was lost.
   for (const e of leadRows) if (e.kind === "form") formStartSessions.add(e.session_id as string);
+  const formStarts = formStartSessions.size + unseenSends.length;
   const formsSent = leadsByKind.form;
 
   const social = personEvents.filter((e) => e.event_type === "social_click");
@@ -332,6 +387,8 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
   const timed = visitors.filter((s) => typeof s.duration_seconds === "number");
   const avgDuration = timed.length ? timed.reduce((a, s) => a + capped(s), 0) / timed.length : 0;
   const bounces = visitors.filter((s) => !leadSessions.has(s.id) && s.is_bounce).length;
+  const totalVisitors = visitors.length + unseenSends.length;
+  const totalLeads = leadSessions.size + unseenSends.length;
 
   const zeros = () => new Array(buckets.length).fill(0) as number[];
   const series = { visitors: zeros(), bots: zeros(), avgDuration: zeros(), bounces: zeros(), leads: zeros(), social: zeros() };
@@ -355,6 +412,12 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
       outcomes[i].other += 1;
     }
   }
+  for (const x of unseenSends) {
+    const i = bucketIndex(buckets, x.created_at);
+    series.visitors[i] += 1;
+    series.leads[i] += 1;
+    outcomes[i].followedThrough += 1;
+  }
   for (const s of botRows) series.bots[bucketIndex(buckets, s.session_start)] += 1;
   for (const e of social) {
     const i = bucketIndex(buckets, byId.get(e.session_id as string)!.session_start);
@@ -366,18 +429,19 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
     version: SITE_METRICS_VERSION,
     buckets,
     totals: {
-      visitors: visitors.length,
+      visitors: totalVisitors,
+      unseenSends: unseenSends.length,
       bots: botRows.length,
       botsFlagged: botRows.filter((s) => s.is_bot).length,
       botsLikely: botRows.filter((s) => !s.is_bot).length,
       bounces,
-      bounceRate: pct(bounces, visitors.length),
-      leads: leadSessions.size,
-      leadRate: pct(leadSessions.size, visitors.length),
+      bounceRate: pct(bounces, totalVisitors),
+      leads: totalLeads,
+      leadRate: pct(totalLeads, totalVisitors),
       leadsByKind,
-      formStarts: formStartSessions.size,
+      formStarts,
       formsSent,
-      formCompletion: formStartSessions.size ? Math.min(100, pct(formsSent, formStartSessions.size)) : null,
+      formCompletion: formStarts ? Math.min(100, pct(formsSent, formStarts)) : null,
       avgDuration,
       durationSamples: timed.length,
       social: social.length,
@@ -385,7 +449,7 @@ export function computeSiteMetrics(sessionsIn: MetricSession[], eventsIn: Metric
     },
     series,
     outcomes,
-    rows: { visitors, bots: botRows, leads: leadRows, formStarts: formStartRows, social },
+    rows: { visitors, bots: botRows, leads: leadRows, unseenSends, formStarts: formStartRows, social },
   };
 }
 
@@ -418,7 +482,13 @@ function leadMix(t: SiteMetrics["totals"]): string {
 export function metricTiles(m: SiteMetrics): MetricTile[] {
   const t = m.totals;
   return [
-    { key: "visitors", label: "Visitors", value: t.visitors.toLocaleString("en-US"), sub: "bots excluded", help: METRIC_HELP.visitors },
+    {
+      key: "visitors",
+      label: "Visitors",
+      value: t.visitors.toLocaleString("en-US"),
+      sub: t.unseenSends ? `bots excluded, ${t.unseenSends} known only from a sent form` : "bots excluded",
+      help: METRIC_HELP.visitors,
+    },
     {
       key: "bots",
       label: "Bots filtered out",

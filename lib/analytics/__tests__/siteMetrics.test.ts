@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { computeSiteMetrics, metricTiles, rangeBuckets, type MetricEvent, type MetricSession } from "../siteMetrics";
+import { computeSiteMetrics, metricTiles, rangeBuckets, type MetricEvent, type MetricSession, type MetricSubmission } from "../siteMetrics";
 
 /*
  * Guards against the dashboard and the PDF report drifting apart again.
@@ -14,7 +14,7 @@ import { computeSiteMetrics, metricTiles, rangeBuckets, type MetricEvent, type M
  *    change it, copy it to the other repo and update SITE_METRICS_SHA256 in
  *    both tests.
  */
-const SITE_METRICS_SHA256 = "c4ec1f9337dc62d42d8e45a21666b4bbd039b69d11a324077d26c986988e20e4";
+const SITE_METRICS_SHA256 = "e44fc9a2c8d4576b85429eee08ace9d0d4e1b3556a40c305f8f3529b0448acdf";
 
 const NOW = new Date("2026-11-13T18:00:00Z");
 const at = (daysAgo: number, time = "15:00:00") => {
@@ -135,6 +135,49 @@ describe("site metrics", () => {
       ["Avg. time on site", "5:06"],
       ["Bounces", "3 (38%)"],
       ["Lead follow-through", "3 (38%)"],
+      ["Forms started", "3"],
+    ]);
+  });
+});
+
+describe("a site whose server records its sends", () => {
+  // s2: the browser submitted and the send was delivered. s9: the browser submitted but no send was
+  // delivered (failed), so it is not a lead. A send with no visit is a person the tracker could not see.
+  // A send from b1 is our own scripted test.
+  const SENDS: MetricSubmission[] = [
+    { session_id: "s2", form: "inspection-request", created_at: at(3, "15:01:01") },
+    { session_id: null, form: "inspection-request", created_at: at(2, "09:30:00") },
+    { session_id: "b1", form: "inspection-request", created_at: at(3, "15:00:30") },
+  ];
+  const wired = () => computeSiteMetrics(SESSIONS, EVENTS, rangeBuckets("month", NOW), SENDS);
+
+  it("counts delivered sends, not browser submits", () => {
+    const t = wired().totals;
+    expect(t.visitors).toBe(9);
+    expect(t.unseenSends).toBe(1);
+    expect(t.leads).toBe(3);
+    expect(t.leadsByKind).toEqual({ form: 2, call: 1, text: 1, email: 0 });
+    expect(t.formStarts).toBe(3);
+    expect(t.formsSent).toBe(2);
+    expect(t.bounces).toBe(3);
+  });
+
+  it("keeps the outcomes and series in step with the totals", () => {
+    const m = wired();
+    const followed = m.outcomes.reduce((a, d) => a + d.followedThrough, 0);
+    const all = m.outcomes.reduce((a, d) => a + d.followedThrough + d.bounced + d.other, 0);
+    expect(followed).toBe(m.totals.leads);
+    expect(all).toBe(m.totals.visitors);
+    expect(m.series.visitors.reduce((a, n) => a + n, 0)).toBe(m.totals.visitors);
+  });
+
+  it("words the tiles", () => {
+    expect(metricTiles(wired()).map((x) => [x.label, x.value])).toEqual([
+      ["Visitors", "9"],
+      ["Bots filtered out", "7"],
+      ["Avg. time on site", "5:06"],
+      ["Bounces", "3 (33%)"],
+      ["Lead follow-through", "3 (33%)"],
       ["Forms started", "3"],
     ]);
   });
